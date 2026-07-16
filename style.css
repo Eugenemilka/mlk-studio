@@ -811,6 +811,10 @@ h1 {
     cursor: auto !important;
   }
 
+  body {
+    overflow-y: visible;
+  }
+
   .cursor-dot,
   .cursor-ellipse,
   .cursor-label {
