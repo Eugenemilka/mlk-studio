@@ -1,5 +1,5 @@
 :root {
-  --bg: #0b0b0b;
+  --bg: #080808;
   --text: #f4efe3;
   --text-soft: rgba(244, 239, 227, 0.72);
   --page-inset: 30px;
@@ -21,7 +21,7 @@
 }
 
 html {
-  background-color: #0b0b0b;
+  background-color: #080808;
 }
 
 html,
@@ -32,7 +32,7 @@ body {
   min-height: 100%;
   overflow-x: hidden;
   overflow-x: clip;
-  background-color: #0b0b0b;
+  background-color: #080808;
   color: var(--text);
   color-scheme: dark;
   font-family: var(--font);
@@ -60,7 +60,6 @@ body::before {
   position: relative;
   height: 100vh;
   height: 100svh;
-  overflow: hidden;
   background: var(--bg);
 }
 
