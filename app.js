@@ -33,7 +33,7 @@ if (pointerFine && cursorDot && cursorEllipse) {
     ellipseTarget.y = event.clientY;
   });
 
-  document.querySelectorAll('a, button').forEach((el) => {
+  document.querySelectorAll('a, button, input, textarea, select').forEach((el) => {
     el.addEventListener('mouseenter', () => document.body.classList.add('is-interactive'));
     el.addEventListener('mouseleave', () => document.body.classList.remove('is-interactive'));
   });
@@ -206,8 +206,8 @@ if (spBox && projectBtn) {
 // ---------------------------------------------------------------------------
 // Preloader + stair-step reveal.
 // The white stair screen acts as the preloader: it stays until the site is
-// fully loaded (fonts, hero textures, window load), showing the percentage
-// bottom-right. Only then the stairs open and content animations follow.
+// fully loaded (fonts, every page image, hero textures and window load),
+// showing the percentage bottom-right. Only then the stairs open.
 // ---------------------------------------------------------------------------
 const stairReveal = document.querySelector('.stair-reveal');
 const preloaderCount = stairReveal?.querySelector('.stair-reveal__count');
@@ -225,7 +225,7 @@ const forceThemeColor = () => {
 
 forceThemeColor();
 
-const LOAD_UNITS = { fonts: 20, tex0: 20, tex1: 20, tex2: 20, page: 20 };
+const LOAD_UNITS = { fonts: 15, tex0: 15, tex1: 15, tex2: 15, images: 30, page: 10 };
 const loadedUnits = new Set();
 let loadProgressTarget = 0;
 
@@ -245,8 +245,43 @@ if (document.readyState === 'complete') {
 } else {
   window.addEventListener('load', () => markLoaded('page'), { once: true });
 }
-// Safety net: a failed resource must never trap the user on the preloader
-setTimeout(() => Object.keys(LOAD_UNITS).forEach(markLoaded), 12000);
+
+const decodeLoadedImage = (image) => {
+  if (typeof image.decode !== 'function') return Promise.resolve();
+  return image.decode().catch(() => undefined);
+};
+
+const waitForDomImage = (image) => new Promise((resolve) => {
+  image.loading = 'eager';
+  image.fetchPriority = 'high';
+
+  const finish = () => decodeLoadedImage(image).then(resolve);
+  if (image.complete) {
+    finish();
+    return;
+  }
+
+  image.addEventListener('load', finish, { once: true });
+  image.addEventListener('error', resolve, { once: true });
+});
+
+const preloadImageSource = (source) => new Promise((resolve) => {
+  const image = new Image();
+  image.decoding = 'async';
+  image.onload = () => decodeLoadedImage(image).then(resolve);
+  image.onerror = resolve;
+  image.src = source;
+});
+
+const cssImageSources = [
+  'assets/noise.png',
+  'assets/caret-right.svg',
+];
+
+Promise.all([
+  ...Array.from(document.images, waitForDomImage),
+  ...cssImageSources.map(preloadImageSource),
+]).then(() => markLoaded('images'));
 
 // Resolves when the displayed counter has smoothly reached 100%
 const siteReady = new Promise((resolve) => {
@@ -270,14 +305,19 @@ const siteReady = new Promise((resolve) => {
 });
 
 const stairRevealDone = new Promise((resolve) => {
-  if (!stairReveal || prefersReducedMotion || mqMobile.matches) {
-    stairReveal?.remove();
-    forceThemeColor();
+  if (!stairReveal) {
     resolve();
     return;
   }
 
   siteReady.then(() => {
+    if (prefersReducedMotion) {
+      stairReveal.remove();
+      forceThemeColor();
+      resolve();
+      return;
+    }
+
     setTimeout(() => {
       stairReveal.classList.add('is-open');
       // Content starts animating while the back layer is still clearing
@@ -495,6 +535,7 @@ const uniforms = {
   uDisplacement: { value: null },
   uFlowMap: { value: null },
   uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+  uParallax: { value: new THREE.Vector2(0, 0) },
   uMouseInfluence: { value: 0.0 },
   uTime: { value: 0 },
   uResolution: { value: new THREE.Vector2(viewportWidth, initialRendererHeight) },
@@ -517,6 +558,7 @@ const material = new THREE.ShaderMaterial({
     uniform sampler2D uDisplacement;
     uniform sampler2D uFlowMap;
     uniform vec2 uMouse;
+    uniform vec2 uParallax;
     uniform float uMouseInfluence;
     uniform float uTime;
     uniform vec2 uResolution;
@@ -525,6 +567,9 @@ const material = new THREE.ShaderMaterial({
 
     void main() {
       vec2 uv = vUv;
+
+      vec2 parallax = uParallax / uResolution;
+      uv += parallax;
 
       vec2 ambient = texture2D(uDisplacement, uv * 1.18 + vec2(uTime * 0.012, uTime * 0.008)).rg - 0.5;
       uv += ambient * 0.012;
@@ -602,10 +647,7 @@ new IntersectionObserver(([entry]) => {
 
 Promise.all(
   texturePaths.map((path, i) =>
-    loadTexture(path).then((texture) => {
-      markLoaded(`tex${i}`);
-      return texture;
-    }),
+    loadTexture(path).finally(() => markLoaded(`tex${i}`)),
   ),
 ).then(([texture, displacement, flowMap]) => {
   uniforms.uTexture.value = texture;
@@ -614,6 +656,8 @@ Promise.all(
   uniforms.uImageResolution.value.set(texture.image.width, texture.image.height);
   webglReady = true;
   requestAnimationFrame(renderLoop);
+}).catch((error) => {
+  console.error('Hero textures failed to load:', error);
 });
 
 const renderLoop = () => {
@@ -631,6 +675,7 @@ const renderLoop = () => {
   }
 
   uniforms.uMouse.value.set(smoothedMouse.x, smoothedMouse.y);
+  uniforms.uParallax.value.set((0.5 - smoothedMouse.x) * 30, (0.5 - smoothedMouse.y) * 30);
   uniforms.uMouseInfluence.value = influence;
   uniforms.uTime.value += 0.016;
 
@@ -1157,7 +1202,6 @@ worksViewport?.addEventListener('pointerdown', (event) => {
   worksDragStartX = event.clientX;
   worksDragStartPosition = worksPosition;
   worksDragMoved = false;
-  worksViewport.setPointerCapture(event.pointerId);
 });
 
 worksViewport?.addEventListener('pointermove', (event) => {
@@ -1166,7 +1210,10 @@ worksViewport?.addEventListener('pointermove', (event) => {
   const dragDistance = event.clientX - worksDragStartX;
   if (!worksDragMoved && Math.abs(dragDistance) < 3) return;
 
-  worksDragMoved = true;
+  if (!worksDragMoved) {
+    worksDragMoved = true;
+    worksViewport.setPointerCapture(event.pointerId);
+  }
   worksTrack?.classList.add('is-direct-manipulation');
   worksViewport.classList.add('is-dragging');
   worksPosition = clampWorksPosition(worksDragStartPosition - dragDistance);
@@ -1193,8 +1240,8 @@ const finishWorksDrag = (event) => {
   worksTrack?.classList.remove('is-direct-manipulation');
 };
 
-worksViewport?.addEventListener('pointerup', finishWorksDrag);
-worksViewport?.addEventListener('pointercancel', finishWorksDrag);
+window.addEventListener('pointerup', finishWorksDrag);
+window.addEventListener('pointercancel', finishWorksDrag);
 
 worksViewport?.addEventListener('click', (event) => {
   if (!suppressWorksClick) return;
@@ -1518,12 +1565,45 @@ const setScrollMode = () => {
     }
   }
 
+  if (document.body.classList.contains('form-open')) {
+    lenis?.stop();
+  }
+
   updateHeroParallax(lenis?.scroll ?? window.scrollY);
 };
 
 const anchorHeader = document.querySelector('.site-header');
 
+const scrollToPageHash = (hash) => {
+  const target = hash ? document.getElementById(hash.slice(1)) : null;
+  if (!target) return;
+
+  const isPageTop = target.id === 'top';
+  const headerOffset = isPageTop
+    ? 0
+    : -((anchorHeader?.getBoundingClientRect().height || 0) + 15);
+
+  if (lenis) {
+    lenis.scrollTo(target, {
+      offset: headerOffset,
+      duration: 1.2,
+    });
+  } else {
+    const targetTop = isPageTop
+      ? 0
+      : window.scrollY + target.getBoundingClientRect().top + headerOffset;
+    window.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+    });
+  }
+
+  if (window.location.hash !== hash) history.pushState(null, '', hash);
+};
+
 document.querySelectorAll('a[href^="#"]:not([href="#"])').forEach((link) => {
+  if (link.hasAttribute('data-form-nav')) return;
+
   link.addEventListener('click', (event) => {
     if (
       event.defaultPrevented ||
@@ -1534,34 +1614,253 @@ document.querySelectorAll('a[href^="#"]:not([href="#"])').forEach((link) => {
       event.altKey
     ) return;
 
-    const hash = link.getAttribute('href');
-    const target = hash ? document.getElementById(hash.slice(1)) : null;
-    if (!target) return;
-
     event.preventDefault();
-    const isPageTop = target.id === 'top';
-    const headerOffset = isPageTop
-      ? 0
-      : -((anchorHeader?.getBoundingClientRect().height || 0) + 15);
-
-    if (lenis) {
-      lenis.scrollTo(target, {
-        offset: headerOffset,
-        duration: 1.2,
-      });
-    } else {
-      const targetTop = isPageTop
-        ? 0
-        : window.scrollY + target.getBoundingClientRect().top + headerOffset;
-      window.scrollTo({
-        top: Math.max(0, targetTop),
-        behavior: prefersReducedMotion ? 'auto' : 'smooth',
-      });
-    }
-
-    if (window.location.hash !== hash) history.pushState(null, '', hash);
+    scrollToPageHash(link.getAttribute('href'));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Project request modal: solid top-down mask, focus management and floats.
+// ---------------------------------------------------------------------------
+const formModal = document.querySelector('.form-modal');
+
+if (formModal) {
+  const formPanel = formModal.querySelector('.form-modal__panel');
+  const formClose = formModal.querySelector('.form-modal__close');
+  const requestForm = formModal.querySelector('.request-form');
+  const firstFormField = requestForm?.querySelector('input, textarea');
+  const formFloats = Array.from(formModal.querySelectorAll('.form-modal__media .float'))
+    .map((element) => ({
+      element,
+      depth: Number.parseFloat(element.dataset.depth || '0'),
+      x: 0,
+      y: 0,
+      targetX: 0,
+      targetY: 0,
+    }));
+  const MODAL_TRANSITION_MS = prefersReducedMotion ? 0 : 780;
+  const modalPointer = { x: 0, y: 0 };
+  let modalOpen = false;
+  let modalClosing = false;
+  let modalCloseTimer = 0;
+  let modalFloatFrame = 0;
+  let modalTrigger = null;
+  let modalAfterClose = null;
+  let lockedScrollY = 0;
+  let savedBodyStyles = null;
+
+  formModal.inert = true;
+
+  const modalFocusable = () => Array.from(formModal.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+  )).filter((element) => element.getClientRects().length > 0);
+
+  const lockModalScroll = () => {
+    lockedScrollY = lenis?.scroll ?? window.scrollY;
+    const scrollbarWidth = Math.max(0, window.innerWidth - document.documentElement.clientWidth);
+    const bodyPaddingRight = Number.parseFloat(getComputedStyle(document.body).paddingRight) || 0;
+
+    savedBodyStyles = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      width: document.body.style.width,
+      overflow: document.body.style.overflow,
+      paddingRight: document.body.style.paddingRight,
+    };
+
+    lenis?.stop();
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${lockedScrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${bodyPaddingRight + scrollbarWidth}px`;
+    }
+  };
+
+  const unlockModalScroll = () => {
+    if (!savedBodyStyles) return;
+
+    Object.assign(document.body.style, savedBodyStyles);
+    savedBodyStyles = null;
+    window.scrollTo(0, lockedScrollY);
+
+    if (lenis) {
+      lenis.resize();
+      lenis.scrollTo(lockedScrollY, { immediate: true, force: true });
+      lenis.start();
+    }
+    updateHeroParallax(lockedScrollY);
+  };
+
+  const renderModalFloats = () => {
+    modalFloatFrame = 0;
+    if (!modalOpen || !pointerFine || prefersReducedMotion || mqMobile.matches) return;
+
+    let moving = false;
+    formFloats.forEach((item) => {
+      item.x += (item.targetX - item.x) * 0.1;
+      item.y += (item.targetY - item.y) * 0.1;
+      if (Math.abs(item.targetX - item.x) > 0.02 || Math.abs(item.targetY - item.y) > 0.02) {
+        moving = true;
+      }
+      item.element.style.transform = `translate3d(${item.x.toFixed(2)}px, ${item.y.toFixed(2)}px, 0)`;
+    });
+
+    // Keep one loop alive while the modal is open so pointer updates never
+    // spawn competing animation frames.
+    if (modalOpen || moving) {
+      modalFloatFrame = requestAnimationFrame(renderModalFloats);
+    }
+  };
+
+  const startModalFloats = () => {
+    if (!pointerFine || prefersReducedMotion || mqMobile.matches || modalFloatFrame) return;
+    modalFloatFrame = requestAnimationFrame(renderModalFloats);
+  };
+
+  const stopModalFloats = () => {
+    cancelAnimationFrame(modalFloatFrame);
+    modalFloatFrame = 0;
+    formFloats.forEach((item) => {
+      item.x = 0;
+      item.y = 0;
+      item.targetX = 0;
+      item.targetY = 0;
+      item.element.style.transform = '';
+    });
+  };
+
+  const finishModalClose = () => {
+    const afterClose = modalAfterClose;
+    modalCloseTimer = 0;
+    modalAfterClose = null;
+    formModal.classList.remove('is-mounted');
+    formModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('form-open');
+    unlockModalScroll();
+    modalClosing = false;
+    if (afterClose) {
+      afterClose();
+    } else {
+      modalTrigger?.focus({ preventScroll: true });
+    }
+    modalTrigger = null;
+  };
+
+  const closeFormModal = (afterClose = null) => {
+    if (!modalOpen || modalClosing) return;
+    modalAfterClose = typeof afterClose === 'function' ? afterClose : null;
+    modalOpen = false;
+    modalClosing = true;
+    formModal.inert = true;
+    formModal.classList.remove('is-open');
+    stopModalFloats();
+    clearTimeout(modalCloseTimer);
+
+    if (MODAL_TRANSITION_MS === 0) {
+      finishModalClose();
+    } else {
+      modalCloseTimer = window.setTimeout(finishModalClose, MODAL_TRANSITION_MS);
+    }
+  };
+
+  const openFormModal = (trigger) => {
+    if (modalOpen) return;
+    const wasClosing = modalClosing;
+    if (modalClosing) {
+      clearTimeout(modalCloseTimer);
+      modalCloseTimer = 0;
+      modalClosing = false;
+    }
+
+    modalOpen = true;
+    modalAfterClose = null;
+    modalTrigger = trigger instanceof HTMLElement ? trigger : document.activeElement;
+    if (!wasClosing) lockModalScroll();
+    document.body.classList.add('form-open');
+    formModal.inert = false;
+    formModal.setAttribute('aria-hidden', 'false');
+    formModal.classList.add('is-mounted');
+
+    requestAnimationFrame(() => {
+      formModal.classList.add('is-open');
+      firstFormField?.focus({ preventScroll: true });
+      startModalFloats();
+    });
+  };
+
+  document.querySelectorAll('[data-open-form]').forEach((trigger) => {
+    trigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      openFormModal(trigger);
+    });
+  });
+
+  formModal.querySelectorAll('[data-form-nav]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      const hash = link.getAttribute('href');
+      closeFormModal(() => scrollToPageHash(hash));
+    });
+  });
+
+  formClose?.addEventListener('click', () => closeFormModal());
+  requestForm?.addEventListener('submit', (event) => event.preventDefault());
+
+  document.addEventListener('keydown', (event) => {
+    if (!modalOpen) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeFormModal();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = modalFocusable();
+    if (!focusable.length) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!formModal.contains(document.activeElement)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
+  if (pointerFine && !prefersReducedMotion) {
+    formModal.addEventListener('pointermove', (event) => {
+      if (!modalOpen || mqMobile.matches) return;
+      const rect = formPanel.getBoundingClientRect();
+      modalPointer.x = Math.max(-1, Math.min(1, (event.clientX - rect.left) / rect.width * 2 - 1));
+      modalPointer.y = Math.max(-1, Math.min(1, (event.clientY - rect.top) / rect.height * 2 - 1));
+      formFloats.forEach((item) => {
+        item.targetX = modalPointer.x * item.depth * 90;
+        item.targetY = modalPointer.y * item.depth * 90;
+      });
+    }, { passive: true });
+
+    formModal.addEventListener('pointerleave', () => {
+      formFloats.forEach((item) => {
+        item.targetX = 0;
+        item.targetY = 0;
+      });
+    }, { passive: true });
+  }
+}
 
 const masterRaf = (time) => {
   lenis?.raf(time);
