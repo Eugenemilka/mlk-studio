@@ -476,10 +476,12 @@ if (heroRevealTitle && pointerFine) {
 const heroSection = document.querySelector('.hero');
 
 const rendererPixelRatio = () => Math.min(window.devicePixelRatio || 1, mqMobile.matches ? 1.5 : 2);
+const rendererHeight = () => Math.max(1, Math.round(stableVh * (mqMobile.matches ? 0.5 : 1)));
+const initialRendererHeight = rendererHeight();
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(rendererPixelRatio());
-renderer.setSize(viewportWidth, stableVh);
+renderer.setSize(viewportWidth, initialRendererHeight, false);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.setClearColor(0x0b0b0b, 1);
 heroSection.prepend(renderer.domElement);
@@ -498,7 +500,7 @@ const uniforms = {
   uMouse: { value: new THREE.Vector2(0.5, 0.5) },
   uMouseInfluence: { value: 0.0 },
   uTime: { value: 0 },
-  uResolution: { value: new THREE.Vector2(viewportWidth, stableVh) },
+  uResolution: { value: new THREE.Vector2(viewportWidth, initialRendererHeight) },
   uImageResolution: { value: new THREE.Vector2(1, 1) },
 };
 
@@ -783,9 +785,10 @@ let viewportRefreshFrame = 0;
 const applyViewport = () => {
   viewportWidth = window.innerWidth;
   stableVh = window.innerHeight;
+  const canvasHeight = rendererHeight();
   renderer.setPixelRatio(rendererPixelRatio());
-  renderer.setSize(viewportWidth, stableVh);
-  uniforms.uResolution.value.set(viewportWidth, stableVh);
+  renderer.setSize(viewportWidth, canvasHeight, false);
+  uniforms.uResolution.value.set(viewportWidth, canvasHeight);
   measureServices();
 };
 

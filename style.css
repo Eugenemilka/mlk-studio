@@ -822,6 +822,12 @@ h1 {
     padding: 1rem var(--page-inset);
   }
 
+  #hero-canvas {
+    inset: 0 auto auto 0;
+    height: 70vh;
+    height: 70svh;
+  }
+
   html,
   body,
   * {
