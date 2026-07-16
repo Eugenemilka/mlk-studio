@@ -215,6 +215,19 @@ if (spBox && projectBtn) {
 const stairReveal = document.querySelector('.stair-reveal');
 const preloaderCount = stairReveal?.querySelector('.stair-reveal__count');
 
+const forceThemeColor = () => {
+  let meta = document.querySelector('meta[name="theme-color"]:not([media])');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.setAttribute('name', 'theme-color');
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute('content', '#0b0b0c');
+  requestAnimationFrame(() => meta.setAttribute('content', '#0b0b0b'));
+};
+
+forceThemeColor();
+
 const LOAD_UNITS = { fonts: 20, tex0: 20, tex1: 20, tex2: 20, page: 20 };
 const loadedUnits = new Set();
 let loadProgressTarget = 0;
@@ -262,6 +275,7 @@ const siteReady = new Promise((resolve) => {
 const stairRevealDone = new Promise((resolve) => {
   if (!stairReveal || prefersReducedMotion) {
     stairReveal?.remove();
+    forceThemeColor();
     resolve();
     return;
   }
@@ -272,7 +286,10 @@ const stairRevealDone = new Promise((resolve) => {
       // Content starts animating while the back layer is still clearing
       setTimeout(resolve, 700);
       // Last back step: 0.16s layer delay + 7 * 0.055s stagger + 0.75s duration
-      setTimeout(() => stairReveal.remove(), 1500);
+      setTimeout(() => {
+        stairReveal.remove();
+        forceThemeColor();
+      }, 1500);
     }, 200);
   });
 });
