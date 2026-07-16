@@ -71,6 +71,8 @@ const projectBtn = spBox?.querySelector('.btn');
 
 if (spBox && projectBtn) {
   const dvdMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  // On mobile the button is static, centered, with no pointer interaction
+  const dvdStatic = () => dvdMotionQuery.matches || mqMobile.matches;
   const DVD_SPEED = 1.75 / 3;
   const FOLLOW_LERP = 0.15;
   const position = { x: 0, y: 0 };
@@ -100,7 +102,7 @@ if (spBox && projectBtn) {
     bounds.maxX = Math.max(0, boxRect.width - buttonRect.width);
     bounds.maxY = Math.max(0, boxRect.height - buttonRect.height);
 
-    if (!isMeasured || dvdMotionQuery.matches) {
+    if (!isMeasured || dvdStatic()) {
       position.x = bounds.maxX / 2;
       position.y = bounds.maxY / 2;
       isMeasured = true;
@@ -149,7 +151,7 @@ if (spBox && projectBtn) {
   };
 
   const startDvdAnimation = () => {
-    if (dvdMotionQuery.matches || dvdFrameId) return;
+    if (dvdStatic() || dvdFrameId) return;
     dvdFrameId = requestAnimationFrame(dvdTick);
   };
 
@@ -159,6 +161,7 @@ if (spBox && projectBtn) {
   };
 
   spBox.addEventListener('pointerenter', (event) => {
+    if (mqMobile.matches) return;
     document.body.classList.add('cursor-hide');
     if (dvdMotionQuery.matches) return;
     isFollowing = true;
@@ -166,11 +169,12 @@ if (spBox && projectBtn) {
   });
 
   spBox.addEventListener('pointermove', (event) => {
-    if (!isFollowing || dvdMotionQuery.matches) return;
+    if (!isFollowing || dvdStatic()) return;
     updateFollowTarget(event);
   });
 
   spBox.addEventListener('pointerleave', () => {
+    if (mqMobile.matches) return;
     document.body.classList.remove('cursor-hide');
     isFollowing = false;
     if (Math.hypot(velocity.x, velocity.y) < 0.1) {
@@ -178,22 +182,26 @@ if (spBox && projectBtn) {
     }
   });
 
-  dvdMotionQuery.addEventListener('change', (event) => {
+  const syncDvdMode = () => {
     isFollowing = false;
+    document.body.classList.remove('cursor-hide');
     measureDvdBounds();
-    if (event.matches) {
+    if (dvdStatic()) {
       stopDvdAnimation();
     } else {
       if (Math.hypot(velocity.x, velocity.y) < 0.1) seedDvdVelocity();
       startDvdAnimation();
     }
-  });
+  };
+
+  dvdMotionQuery.addEventListener('change', syncDvdMode);
+  mqMobile.addEventListener('change', syncDvdMode);
 
   new ResizeObserver(measureDvdBounds).observe(spBox);
   (document.fonts?.ready || Promise.resolve()).then(measureDvdBounds);
 
   measureDvdBounds();
-  if (!dvdMotionQuery.matches) {
+  if (!dvdStatic()) {
     seedDvdVelocity();
     startDvdAnimation();
   }
