@@ -1,5 +1,5 @@
 :root {
-  --bg: #080808;
+  --bg: #0B0B0B;
   --text: #f4efe3;
   --text-soft: rgba(244, 239, 227, 0.72);
   --page-inset: 30px;
@@ -21,7 +21,7 @@
 }
 
 html {
-  background-color: #080808;
+  background-color: #0B0B0B;
   scrollbar-width: none;
 }
 
