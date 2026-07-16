@@ -719,20 +719,12 @@ h1 {
   position: relative;
   color: var(--text);
   opacity: 0;
-  transform: translate3d(0, 0, 0);
-  transition: opacity 0.7s var(--ease), color 0.3s var(--ease);
+  transform: translateX(-60px);
+  transition: opacity 0.7s var(--ease), transform 0.7s var(--ease), color 0.3s var(--ease);
 }
 
 .service.is-in {
   opacity: 1;
-}
-
-.service .service-grid {
-  transform: translateX(-60px);
-  transition: transform 0.7s var(--ease);
-}
-
-.service.is-in .service-grid {
   transform: translateX(0);
 }
 
@@ -754,8 +746,6 @@ h1 {
 .service:hover .service-fill {
   height: 100%;
   background: var(--text);
-  transform: scaleY(var(--service-fill-scale, 1));
-  transform-origin: top;
 }
 
 .service-grid {
@@ -793,16 +783,6 @@ h1 {
 
 .service-body-wrap {
   overflow: hidden;
-  clip-path: inset(0 0 0 0);
-  opacity: 1;
-}
-
-.about.is-pin-active .service {
-  will-change: transform;
-}
-
-.about.is-pin-active .service-body-wrap {
-  will-change: clip-path, opacity;
 }
 
 .service-body {
@@ -873,10 +853,6 @@ h1 {
   .service {
     transition: none;
     opacity: 1;
-  }
-
-  .service .service-grid {
-    transition: none;
     transform: none;
   }
 }
@@ -912,10 +888,6 @@ h1 {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: linear-gradient(to bottom, rgba(11, 11, 11, 0.92), rgba(11, 11, 11, 0));
-  }
-
-  .about {
-    height: var(--about-mobile-height, 280svh);
   }
 
   .site-header {

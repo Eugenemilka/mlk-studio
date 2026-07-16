@@ -8,8 +8,6 @@ const cursorLabel = document.querySelector('.cursor-label');
 let stableVh = window.innerHeight;
 let lastWidth = window.innerWidth;
 const MOBILE_BREAKPOINT = 800;
-const MOBILE_PIN_BUFFER = 60;
-const MOBILE_COLLAPSE_VIEWPORTS = 1.5;
 const isMobileLayout = () => lastWidth <= MOBILE_BREAKPOINT;
 const cursorTarget = { x: 0, y: 0 };
 const cursorCurrent = { x: 0, y: 0 };
@@ -602,71 +600,31 @@ let measureServices = () => {};
 let updateServicesCollapse = () => {};
 if (aboutSection && serviceEls.length) {
   const bodyWraps = serviceEls.map((el) => el.querySelector('.service-body-wrap'));
-  const serviceBodies = bodyWraps.map((wrap) => wrap.querySelector('.service-body'));
   const sticky = document.querySelector('.about-sticky');
   const header = document.querySelector('.site-header');
   let bodyHeights = bodyWraps.map(() => 0);
-  let serviceHeights = serviceEls.map(() => 1);
   let cachedPinStart = 0;
   let cachedPinDistance = 0;
-  let cachedPinRelease = 0;
-  let pinActive = false;
-  const lastLocals = serviceEls.map(() => Number.NaN);
-  const lastShifts = serviceEls.map(() => Number.NaN);
-  const nextLocals = serviceEls.map(() => 0);
-  const nextShifts = serviceEls.map(() => 0);
 
   updateServicesCollapse = (scroll) => {
     if (cachedPinDistance <= 0) return;
 
-    const rawProgress = (scroll - cachedPinStart) / cachedPinDistance;
-    const progress = Math.min(1, Math.max(0, rawProgress));
-    const nextPinActive = rawProgress >= 0 && scroll <= cachedPinRelease;
-    let collapsedHeight = 0;
-
-    for (let i = 0; i < serviceEls.length; i += 1) {
+    const progress = Math.min(1, Math.max(0, (scroll - cachedPinStart) / cachedPinDistance));
+    serviceEls.forEach((el, i) => {
       const local = Math.min(1, Math.max(0, progress * serviceEls.length - i));
-      nextLocals[i] = local;
-      nextShifts[i] = collapsedHeight;
-      collapsedHeight += bodyHeights[i] * local;
-    }
-
-    if (nextPinActive !== pinActive) {
-      pinActive = nextPinActive;
-      aboutSection.classList.toggle('is-pin-active', pinActive);
-    }
-
-    for (let i = 0; i < serviceEls.length; i += 1) {
-      const el = serviceEls[i];
-      const local = nextLocals[i];
-      const shift = nextShifts[i];
-
-      if (Math.abs(shift - lastShifts[i]) >= 0.1 || Number.isNaN(lastShifts[i])) {
-        el.style.transform = `translate3d(0, ${(-shift).toFixed(2)}px, 0)`;
-        lastShifts[i] = shift;
-      }
-
-      if (Math.abs(local - lastLocals[i]) >= 0.001 || Number.isNaN(lastLocals[i])) {
-        const remaining = 1 - local;
-        const visibleHeight = serviceHeights[i] - bodyHeights[i] * local;
-        const fillScale = Math.max(0, visibleHeight / serviceHeights[i]);
-        bodyWraps[i].style.clipPath = `inset(0 0 ${(local * 100).toFixed(3)}% 0)`;
-        bodyWraps[i].style.opacity = remaining.toFixed(3);
-        el.style.setProperty('--service-fill-scale', fillScale.toFixed(4));
-        el.classList.toggle('is-collapsed', local >= 1);
-        lastLocals[i] = local;
-      }
-    }
+      bodyWraps[i].style.height = `${Math.round(bodyHeights[i] * (1 - local))}px`;
+      bodyWraps[i].style.opacity = `${1 - local}`;
+      el.classList.toggle('is-collapsed', local >= 1);
+    });
   };
 
   measureServices = () => {
-    // Read phase: all geometry is collected before any inline style is changed.
-    const nextBodyHeights = serviceBodies.map((body) => body.scrollHeight);
-    const currentWrapHeights = bodyWraps.map((wrap) => wrap.offsetHeight);
-    const currentServiceHeights = serviceEls.map((el) => el.offsetHeight);
+    bodyWraps.forEach((wrap) => {
+      wrap.style.height = 'auto';
+    });
+    bodyHeights = bodyWraps.map((wrap) => wrap.scrollHeight);
     const nextAboutTop = aboutSection.offsetTop;
     const nextAboutHeight = aboutSection.offsetHeight;
-    const nextStickyHeight = sticky?.offsetHeight || stableVh;
     let nextPinShift = servicesPinShift;
 
     if (sticky && header && serviceEls[0]) {
@@ -675,39 +633,10 @@ if (aboutSection && serviceEls.length) {
       nextPinShift = Math.max(0, Math.round(firstServiceTop - headerBottom - 30));
     }
 
-    // Write phase: fixed wrapper heights are updated only after width/orientation changes.
-    bodyHeights = nextBodyHeights;
-    serviceHeights = currentServiceHeights.map(
-      (height, i) => Math.max(1, height - currentWrapHeights[i] + bodyHeights[i]),
-    );
     servicesPinShift = nextPinShift;
     aboutScrollTop = nextAboutTop;
     cachedPinStart = nextAboutTop + servicesPinShift;
-
-    if (isMobileLayout()) {
-      const totalBodyHeight = bodyHeights.reduce((sum, height) => sum + height, 0);
-      const collapseDistance = Math.ceil(Math.max(
-        totalBodyHeight,
-        stableVh * MOBILE_COLLAPSE_VIEWPORTS,
-      ));
-      const mobileAboutHeight = Math.ceil(
-        nextStickyHeight + collapseDistance + MOBILE_PIN_BUFFER,
-      );
-
-      aboutSection.style.setProperty('--about-mobile-height', `${mobileAboutHeight}px`);
-      cachedPinDistance = collapseDistance;
-      cachedPinRelease = cachedPinStart + collapseDistance + MOBILE_PIN_BUFFER;
-    } else {
-      aboutSection.style.removeProperty('--about-mobile-height');
-      cachedPinDistance = nextAboutHeight - stableVh - servicesPinShift;
-      cachedPinRelease = cachedPinStart + cachedPinDistance;
-    }
-
-    bodyWraps.forEach((wrap, i) => {
-      wrap.style.height = `${bodyHeights[i]}px`;
-      lastLocals[i] = Number.NaN;
-      lastShifts[i] = Number.NaN;
-    });
+    cachedPinDistance = nextAboutHeight - stableVh - servicesPinShift;
     if (sticky) sticky.style.top = `${-servicesPinShift}px`;
     updateServicesCollapse(currentScroll);
   };
