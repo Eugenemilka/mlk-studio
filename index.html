@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interract — Hero</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="stair-reveal" aria-hidden="true">
+      <div class="stair-reveal__layer stair-reveal__layer--front">
+        <div class="stair-reveal__step" style="--i: 0"></div>
+        <div class="stair-reveal__step" style="--i: 1"></div>
+        <div class="stair-reveal__step" style="--i: 2"></div>
+        <div class="stair-reveal__step" style="--i: 3"></div>
+        <div class="stair-reveal__step" style="--i: 4"></div>
+        <div class="stair-reveal__step" style="--i: 5"></div>
+        <div class="stair-reveal__step" style="--i: 6"></div>
+        <div class="stair-reveal__step" style="--i: 7"></div>
+      </div>
+      <div class="stair-reveal__layer stair-reveal__layer--back">
+        <div class="stair-reveal__step" style="--i: 0"></div>
+        <div class="stair-reveal__step" style="--i: 1"></div>
+        <div class="stair-reveal__step" style="--i: 2"></div>
+        <div class="stair-reveal__step" style="--i: 3"></div>
+        <div class="stair-reveal__step" style="--i: 4"></div>
+        <div class="stair-reveal__step" style="--i: 5"></div>
+        <div class="stair-reveal__step" style="--i: 6"></div>
+        <div class="stair-reveal__step" style="--i: 7"></div>
+      </div>
+    </div>
+    <div class="noise" aria-hidden="true"></div>
+    <div class="top-blur" aria-hidden="true"></div>
+    <div class="cursor-dot" aria-hidden="true"></div>
+    <div class="cursor-ellipse" aria-hidden="true"></div>
+    <div class="cursor-label" aria-hidden="true">[more info]</div>
+    <header class="site-header">
+      <div class="topbar">
+        <nav class="nav" aria-label="Primary" data-fade>
+            <a class="brand interactive" href="#">
+              <span>MLK.STUDIO</span>
+            </a>
+            <div class="nav-menu">
+              <a href="#">
+                <span class="nav-link-mask">
+                  <span class="nav-link-line">works</span>
+                  <span class="nav-link-line">works</span>
+                </span>
+              </a>
+              <a href="#">
+                <span class="nav-link-mask">
+                  <span class="nav-link-line">services</span>
+                  <span class="nav-link-line">services</span>
+                </span>
+              </a>
+              <a href="#">
+                <span class="nav-link-mask">
+                  <span class="nav-link-line">initiatives</span>
+                  <span class="nav-link-line">initiatives</span>
+                </span>
+              </a>
+              <a href="#">
+                <span class="nav-link-mask">
+                  <span class="nav-link-line">company</span>
+                  <span class="nav-link-line">company</span>
+                </span>
+              </a>
+              <a href="#">
+                <span class="nav-link-mask">
+                  <span class="nav-link-line">contact</span>
+                  <span class="nav-link-line">contact</span>
+                </span>
+              </a>
+              <a class="book" href="#">
+                <span class="nav-link-mask">
+                  <span class="nav-link-line">contact us</span>
+                  <span class="nav-link-line">contact us</span>
+                </span>
+              </a>
+            </div>
+        </nav>
+      </div>
+    </header>
+
+    <main class="hero">
+      <div class="overlay">
+        <div class="hero-content">
+          <div class="hero-top">
+            <div class="sp-box">
+              <a class="btn interactive" href="#" data-fade>
+                <span class="btn__mask">
+                  <span class="btn__line">start your project</span>
+                  <span class="btn__line">start your project</span>
+                </span>
+              </a>
+            </div>
+            <h1 data-reveal data-reveal-on="load">We are evolving the way bold ideas become powerful digital products.</h1>
+          </div>
+          <div class="divider" data-fade></div>
+          <div class="social-links" data-fade>
+            <a class="social-link interactive" href="https://www.instagram.com/eugenemi/" target="_blank" rel="noopener noreferrer">
+              <span class="social-link-mask">
+                <span class="social-link-line">instagram</span>
+                <span class="social-link-line">instagram</span>
+              </span>
+            </a>
+            <a class="social-link interactive" href="https://www.linkedin.com/in/jack-milka-742434173" target="_blank" rel="noopener noreferrer">
+              <span class="social-link-mask">
+                <span class="social-link-line">linkedin</span>
+                <span class="social-link-line">linkedin</span>
+              </span>
+            </a>
+            <a class="social-link interactive" href="https://www.behance.net/eugenemilka" target="_blank" rel="noopener noreferrer">
+              <span class="social-link-mask">
+                <span class="social-link-line">behance</span>
+                <span class="social-link-line">behance</span>
+              </span>
+            </a>
+            <a class="social-link interactive" href="https://www.upwork.com/freelancers/~0120f121be81dd6bfc?mp_source=share" target="_blank" rel="noopener noreferrer">
+              <span class="social-link-mask">
+                <span class="social-link-line">upwork</span>
+                <span class="social-link-line">upwork</span>
+              </span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <section class="about">
+      <div class="about-sticky">
+        <div class="about-inner">
+          <div class="about-head">
+            <p class="about-sub" data-reveal data-reveal-delay="0.3">From first concept to final launch, we design, build, animate and refine every detail to create experiences that perform beautifully and scale effortlessly.</p>
+            <h2 class="about-title" data-reveal>We combine design and technology to turn ideas into digital products.</h2>
+          </div>
+
+          <div class="services">
+            <article class="service">
+              <div class="service-fill" aria-hidden="true"></div>
+              <div class="service-grid">
+                <span class="service-index">[ 01 ]</span>
+                <div class="service-content">
+                  <h3 class="service-title">UI/UX Design</h3>
+                  <div class="service-body-wrap">
+                    <div class="service-body">
+                      <div class="service-desc">
+                        <p>We design intuitive digital experiences that balance aesthetics, usability, and business goals.</p>
+                        <p class="service-tools">Tools: Figma · Adobe Photoshop</p>
+                      </div>
+                      <ul class="service-list">
+                        <li>Web Design</li>
+                        <li>Mobile App Design</li>
+                        <li>Design Systems</li>
+                        <li>Product Prototyping</li>
+                        <li>User Flows &amp; Wireframes</li>
+                        <li>Interactive Prototypes</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                <span class="service-arrow" aria-hidden="true">→</span>
+              </div>
+            </article>
+
+            <article class="service">
+              <div class="service-fill" aria-hidden="true"></div>
+              <div class="service-grid">
+                <span class="service-index">[ 02 ]</span>
+                <div class="service-content">
+                  <h3 class="service-title">Web Development</h3>
+                  <div class="service-body-wrap">
+                    <div class="service-body">
+                      <div class="service-desc">
+                        <p>We build fast, scalable digital products and websites engineered for performance and growth.</p>
+                        <p class="service-tools">Tools: Webflow · Framer · HTML5 · CSS3 · JavaScript · TypeScript · React · Node.js · REST APIs</p>
+                      </div>
+                      <ul class="service-list">
+                        <li>Landing Pages</li>
+                        <li>Corporate Websites</li>
+                        <li>CMS Development</li>
+                        <li>Frontend Development</li>
+                        <li>Backend Integration</li>
+                        <li>Custom Features</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                <span class="service-arrow" aria-hidden="true">→</span>
+              </div>
+            </article>
+
+            <article class="service">
+              <div class="service-fill" aria-hidden="true"></div>
+              <div class="service-grid">
+                <span class="service-index">[ 03 ]</span>
+                <div class="service-content">
+                  <h3 class="service-title">Motion &amp; Animation</h3>
+                  <div class="service-body-wrap">
+                    <div class="service-body">
+                      <div class="service-desc">
+                        <p>We create motion that improves interactions, guides attention, and brings products to life.</p>
+                        <p class="service-tools">Tools: Adobe After Effects · Figma Motion</p>
+                      </div>
+                      <ul class="service-list">
+                        <li>Interface Animations</li>
+                        <li>Micro Interactions</li>
+                        <li>Scroll Animations</li>
+                        <li>Lottie Animations</li>
+                        <li>Product Presentations</li>
+                        <li>Explainer Videos</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                <span class="service-arrow" aria-hidden="true">→</span>
+              </div>
+            </article>
+
+            <article class="service">
+              <div class="service-fill" aria-hidden="true"></div>
+              <div class="service-grid">
+                <span class="service-index">[ 04 ]</span>
+                <div class="service-content">
+                  <h3 class="service-title">Illustration &amp; Visual Assets</h3>
+                  <div class="service-body-wrap">
+                    <div class="service-body">
+                      <div class="service-desc">
+                        <p>We create custom visuals that strengthen brand identity and improve communication.</p>
+                        <p class="service-tools">Tools: Adobe Illustrator · Procreate · Affinity Designer</p>
+                      </div>
+                      <ul class="service-list">
+                        <li>Custom Illustrations</li>
+                        <li>Icon Systems</li>
+                        <li>Brand Visual Assets</li>
+                        <li>Marketing Graphics</li>
+                        <li>Presentation Design</li>
+                        <li>Social Media Visuals</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                <span class="service-arrow" aria-hidden="true">→</span>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
