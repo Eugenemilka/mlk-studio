@@ -21,7 +21,7 @@
 }
 
 html {
-  background-color: #0B0B0B;
+  background-color: var(--bg);
   scrollbar-width: none;
 }
 
@@ -40,7 +40,7 @@ body {
   min-height: 100%;
   overflow-x: hidden;
   overflow-x: clip;
-  background-color: #080808;
+  background-color: var(--bg);
   color: var(--text);
   color-scheme: dark;
   font-family: var(--font);
@@ -59,7 +59,7 @@ body::before {
   content: "";
   position: fixed;
   inset: -40vh 0;
-  background: #0b0b0b;
+  background: var(--bg);
   z-index: -1;
   pointer-events: none;
 }
@@ -68,7 +68,7 @@ body::before {
   position: relative;
   height: 100vh;
   height: 100svh;
-  background: var(--bg);
+
 }
 
 .stair-reveal {
