@@ -5,10 +5,12 @@ const container = document.querySelector('.hero');
 const cursorDot = document.querySelector('.cursor-dot');
 const cursorEllipse = document.querySelector('.cursor-ellipse');
 const cursorLabel = document.querySelector('.cursor-label');
-const cursorTarget = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-const cursorCurrent = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-const ellipseTarget = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-const ellipseCurrent = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+let stableVh = window.innerHeight;
+let lastWidth = window.innerWidth;
+const cursorTarget = { x: lastWidth / 2, y: stableVh / 2 };
+const cursorCurrent = { x: lastWidth / 2, y: stableVh / 2 };
+const ellipseTarget = { x: lastWidth / 2, y: stableVh / 2 };
+const ellipseCurrent = { x: lastWidth / 2, y: stableVh / 2 };
 
 const onPointerMove = (event) => {
   cursorTarget.x = event.clientX;
@@ -178,7 +180,6 @@ if (spBox && projectBtn) {
     }
   });
 
-  window.addEventListener('resize', measureDvdBounds);
   new ResizeObserver(measureDvdBounds).observe(spBox);
   (document.fonts?.ready || Promise.resolve()).then(measureDvdBounds);
 
@@ -213,7 +214,7 @@ const heroSection = document.querySelector('.hero');
 let servicesPinShift = 0;
 
 const updateHeroParallax = () => {
-  const vh = window.innerHeight;
+  const vh = stableVh;
   const y = window.scrollY;
   const progress = Math.min(y / vh, 1);
   const canvas = document.getElementById('hero-canvas');
@@ -242,7 +243,6 @@ if (!prefersReducedMotion) {
   requestAnimationFrame(lenisRaf);
 
   window.addEventListener('scroll', updateHeroParallax, { passive: true });
-  window.addEventListener('resize', updateHeroParallax);
   updateHeroParallax();
 }
 
@@ -440,7 +440,7 @@ setupFadeIn();
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setSize(lastWidth, stableVh);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.setClearColor(0x0e0e10, 1);
 container.prepend(renderer.domElement);
@@ -459,7 +459,7 @@ const uniforms = {
   uParallax: { value: new THREE.Vector2(0, 0) },
   uMouseInfluence: { value: 0.0 },
   uTime: { value: 0 },
-  uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+  uResolution: { value: new THREE.Vector2(lastWidth, stableVh) },
   uImageResolution: { value: new THREE.Vector2(1, 1) },
 };
 
@@ -559,8 +559,8 @@ const updateMouse = (x, y) => {
 
 if (pointerFine) {
   window.addEventListener('pointermove', (event) => {
-    const x = event.clientX / window.innerWidth;
-    const y = 1 - event.clientY / window.innerHeight;
+    const x = event.clientX / lastWidth;
+    const y = 1 - event.clientY / stableVh;
     updateMouse(x, y);
   });
 
@@ -593,8 +593,6 @@ const animate = () => {
     influence *= 0.94;
   }
 
-  const width = window.innerWidth;
-  const height = window.innerHeight;
   uniforms.uMouse.value.set(smoothedMouse.x, smoothedMouse.y);
   uniforms.uParallax.value.set((0.5 - smoothedMouse.x) * 30, (0.5 - smoothedMouse.y) * 30);
   uniforms.uMouseInfluence.value = influence;
@@ -604,21 +602,15 @@ const animate = () => {
   requestAnimationFrame(animate);
 };
 
-window.addEventListener('resize', () => {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  renderer.setSize(width, height);
-  uniforms.uResolution.value.set(width, height);
-});
-
 const aboutSection = document.querySelector('.about');
 const serviceEls = Array.from(document.querySelectorAll('.service'));
+let measureServices = () => {};
 if (aboutSection && serviceEls.length) {
   const bodyWraps = serviceEls.map((el) => el.querySelector('.service-body-wrap'));
   let bodyHeights = bodyWraps.map(() => 0);
 
   const updateServicesCollapse = () => {
-    const vh = window.innerHeight;
+    const vh = stableVh;
     const pinStart = aboutSection.offsetTop + servicesPinShift;
     const pinDistance = aboutSection.offsetHeight - vh - servicesPinShift;
     if (pinDistance <= 0) return;
@@ -631,7 +623,7 @@ if (aboutSection && serviceEls.length) {
     });
   };
 
-  const measureServices = () => {
+  measureServices = () => {
     bodyWraps.forEach((wrap, i) => {
       wrap.style.height = 'auto';
       bodyHeights[i] = wrap.scrollHeight;
@@ -649,13 +641,7 @@ if (aboutSection && serviceEls.length) {
     updateServicesCollapse();
   };
 
-  const scheduleServicesMeasure = () => {
-    requestAnimationFrame(() => requestAnimationFrame(measureServices));
-  };
-
   window.addEventListener('scroll', updateServicesCollapse, { passive: true });
-  window.addEventListener('resize', scheduleServicesMeasure);
-  window.addEventListener('orientationchange', scheduleServicesMeasure);
   (document.fonts?.ready || Promise.resolve()).then(measureServices);
 
   if (prefersReducedMotion) {
@@ -678,3 +664,35 @@ if (aboutSection && serviceEls.length) {
     el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-more'));
   });
 }
+
+let viewportRefreshFrame = 0;
+let forceViewportRefresh = false;
+
+const applyStableViewport = () => {
+  const width = window.innerWidth;
+  if (!forceViewportRefresh && width === lastWidth) return;
+
+  forceViewportRefresh = false;
+  lastWidth = width;
+  stableVh = window.innerHeight;
+  renderer.setSize(lastWidth, stableVh);
+  uniforms.uResolution.value.set(lastWidth, stableVh);
+  measureServices();
+  if (!prefersReducedMotion) updateHeroParallax();
+};
+
+const scheduleStableViewport = (force = false) => {
+  forceViewportRefresh ||= force;
+  cancelAnimationFrame(viewportRefreshFrame);
+  viewportRefreshFrame = requestAnimationFrame(() => {
+    viewportRefreshFrame = requestAnimationFrame(applyStableViewport);
+  });
+};
+
+const onResize = () => {
+  if (window.innerWidth === lastWidth) return;
+  scheduleStableViewport();
+};
+
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', () => scheduleStableViewport(true));
