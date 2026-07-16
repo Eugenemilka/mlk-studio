@@ -1490,6 +1490,48 @@ const setScrollMode = () => {
   }
 };
 
+const anchorHeader = document.querySelector('.site-header');
+
+document.querySelectorAll('a[href^="#"]:not([href="#"])').forEach((link) => {
+  link.addEventListener('click', (event) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) return;
+
+    const hash = link.getAttribute('href');
+    const target = hash ? document.getElementById(hash.slice(1)) : null;
+    if (!target) return;
+
+    event.preventDefault();
+    const isPageTop = target.id === 'top';
+    const headerOffset = isPageTop
+      ? 0
+      : -((anchorHeader?.getBoundingClientRect().height || 0) + 15);
+
+    if (lenis) {
+      lenis.scrollTo(target, {
+        offset: headerOffset,
+        duration: 1.2,
+      });
+    } else {
+      const targetTop = isPageTop
+        ? 0
+        : window.scrollY + target.getBoundingClientRect().top + headerOffset;
+      window.scrollTo({
+        top: Math.max(0, targetTop),
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      });
+    }
+
+    if (window.location.hash !== hash) history.pushState(null, '', hash);
+  });
+});
+
 const masterRaf = (time) => {
   lenis?.raf(time);
   requestAnimationFrame(masterRaf);
