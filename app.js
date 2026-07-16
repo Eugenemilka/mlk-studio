@@ -1,4 +1,6 @@
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import Lenis from 'https://unpkg.com/lenis@1.3.4/dist/lenis.mjs';
+import Matter from 'https://esm.sh/matter-js@0.20.0';
 
 // ---------------------------------------------------------------------------
 // Viewport state.
@@ -18,7 +20,6 @@ let stableVh = window.innerHeight;
 // ---------------------------------------------------------------------------
 const cursorDot = document.querySelector('.cursor-dot');
 const cursorEllipse = document.querySelector('.cursor-ellipse');
-const cursorLabel = document.querySelector('.cursor-label');
 
 if (pointerFine && cursorDot && cursorEllipse) {
   const cursorCurrent = { x: 0, y: 0 };
@@ -53,10 +54,6 @@ if (pointerFine && cursorDot && cursorEllipse) {
     cursorDot.style.top = `${cursorCurrent.y}px`;
     cursorEllipse.style.left = `${ellipseCurrent.x}px`;
     cursorEllipse.style.top = `${ellipseCurrent.y}px`;
-    if (cursorLabel) {
-      cursorLabel.style.left = `${cursorCurrent.x}px`;
-      cursorLabel.style.top = `${cursorCurrent.y}px`;
-    }
     requestAnimationFrame(animateCursor);
   };
   animateCursor();
@@ -641,99 +638,10 @@ const renderLoop = () => {
 };
 
 // ---------------------------------------------------------------------------
-// Scroll pipeline. ONE consumer per frame; every style write is cached and
-// skipped when the value did not actually change (no layout/paint for free).
+// Services: natural-height sticky stack. No scroll-driven layout writes.
 // ---------------------------------------------------------------------------
 const aboutSection = document.querySelector('.about');
-const aboutSticky = document.querySelector('.about-sticky');
-const siteHeader = document.querySelector('.site-header');
 const serviceEls = Array.from(document.querySelectorAll('.service'));
-const bodyWraps = serviceEls.map((el) => el.querySelector('.service-body-wrap'));
-
-let currentScroll = 0;
-let cachedPinStart = stableVh; // scroll position where the accordion pins
-let cachedPinDistance = 0;     // scroll distance that drives the full collapse
-
-let bodyHeights = bodyWraps.map(() => 0);
-const lastWrapHeights = bodyWraps.map(() => -1);
-const lastWrapOpacities = bodyWraps.map(() => -1);
-const lastCollapsed = bodyWraps.map(() => false);
-
-const updateServicesCollapse = (y) => {
-  if (cachedPinDistance <= 0) return;
-
-  const progress = Math.min(1, Math.max(0, (y - cachedPinStart) / cachedPinDistance));
-  for (let i = 0; i < serviceEls.length; i++) {
-    const local = Math.min(1, Math.max(0, progress * serviceEls.length - i));
-    const height = Math.round(bodyHeights[i] * (1 - local));
-    const opacity = Math.round((1 - local) * 100) / 100;
-    const collapsed = local >= 1;
-
-    if (height !== lastWrapHeights[i]) {
-      lastWrapHeights[i] = height;
-      bodyWraps[i].style.height = `${height}px`;
-    }
-    if (opacity !== lastWrapOpacities[i]) {
-      lastWrapOpacities[i] = opacity;
-      bodyWraps[i].style.opacity = opacity;
-    }
-    if (collapsed !== lastCollapsed[i]) {
-      lastCollapsed[i] = collapsed;
-      serviceEls[i].classList.toggle('is-collapsed', collapsed);
-    }
-  }
-};
-
-const updateScrollAnimations = (scroll) => {
-  currentScroll = scroll;
-  updateServicesCollapse(scroll);
-};
-
-// ---------------------------------------------------------------------------
-// Services: measurement + pin geometry.
-// The .about height is computed here so that the accordion is ALWAYS fully
-// collapsed while the stage is still pinned (any viewport size), and only
-// then the page continues scrolling.
-// ---------------------------------------------------------------------------
-const COLLAPSE_VH_PER_ITEM = 0.45;
-const PIN_END_BUFFER = 160;
-
-const measureServices = () => {
-  if (!aboutSection || !aboutSticky || !serviceEls.length) return;
-
-  // -- writes: unlock natural heights
-  bodyWraps.forEach((wrap) => {
-    wrap.style.height = 'auto';
-  });
-
-  // -- reads (single layout pass)
-  bodyHeights = bodyWraps.map((wrap) => wrap.scrollHeight);
-  const totalBody = bodyHeights.reduce((sum, h) => sum + h, 0);
-  const expandedStageHeight = aboutSticky.offsetHeight;
-  const aboutTop = aboutSection.offsetTop;
-  const headerBottom = siteHeader ? siteHeader.getBoundingClientRect().bottom : 0;
-  const firstServiceTop =
-    serviceEls[0].getBoundingClientRect().top - aboutSticky.getBoundingClientRect().top;
-
-  // -- compute
-  // Pin the stage above the viewport so the first service stops 30px below
-  // the fixed header the moment the accordion starts collapsing.
-  const pinShift = Math.max(0, Math.round(firstServiceTop - headerBottom - 30));
-  const collapsedStageHeight = Math.max(stableVh, expandedStageHeight - totalBody);
-  const collapseDistance = Math.round(stableVh * COLLAPSE_VH_PER_ITEM * serviceEls.length);
-  // Section height that keeps the stage pinned until progress reaches 1
-  const aboutHeight = collapseDistance + collapsedStageHeight + pinShift + PIN_END_BUFFER;
-
-  cachedPinStart = aboutTop + pinShift;
-  cachedPinDistance = collapseDistance;
-
-  // -- writes
-  aboutSticky.style.top = `${-pinShift}px`;
-  aboutSection.style.height = `${aboutHeight}px`;
-  lastWrapHeights.fill(-1);
-  lastWrapOpacities.fill(-1);
-  updateServicesCollapse(currentScroll);
-};
 
 if (serviceEls.length) {
   if (prefersReducedMotion) {
@@ -751,30 +659,842 @@ if (serviceEls.length) {
     serviceEls.forEach((el) => serviceObserver.observe(el));
   }
 
-  if (pointerFine) {
-    serviceEls.forEach((el) => {
-      el.addEventListener('mouseenter', () => document.body.classList.add('cursor-more'));
-      el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-more'));
+}
+
+// ---------------------------------------------------------------------------
+// Service tags: isolated Matter.js worlds with one shared, sleep-aware rAF.
+// ---------------------------------------------------------------------------
+const serviceTagContainers = Array.from(document.querySelectorAll('.service-tags'));
+
+if (serviceTagContainers.length) {
+  if (prefersReducedMotion) {
+    serviceTagContainers.forEach((container) => container.classList.add('is-static'));
+  } else {
+    const { Engine, Bodies, Body, Composite, Sleeping } = Matter;
+    const TAG_CEILING_CATEGORY = 0x0002;
+    const TAG_MASK_WITHOUT_CEILING = 0xfffffffd;
+    const activeTagPhysics = new Set();
+    const tagPhysicsStates = serviceTagContainers.map((container) => ({
+      container,
+      service: container.closest('.service'),
+      chips: Array.from(container.querySelectorAll('.tag')),
+      engine: Engine.create({ enableSleeping: true }),
+      records: [],
+      boundaries: [],
+      width: 0,
+      height: 0,
+      ceilingY: 0,
+      ready: false,
+      startRequested: false,
+      started: false,
+      spawnedCount: 0,
+      pointer: { active: false, x: 0, y: 0 },
+    }));
+
+    let aboutPhysicsVisible = false;
+    let tagPhysicsFrame = 0;
+    let previousPhysicsTime = 0;
+
+    tagPhysicsStates.forEach((state) => {
+      state.engine.gravity.y = 1;
+    });
+
+    const canRunTagPhysics = (state) =>
+      state.ready &&
+      state.started &&
+      state.spawnedCount > 0 &&
+      aboutPhysicsVisible;
+
+    const renderTagRecord = (record) => {
+      const { position, angle } = record.body;
+      record.element.style.transform =
+        `translate3d(${position.x - record.width / 2}px, ${position.y - record.height / 2}px, 0) ` +
+        `rotate(${angle}rad)`;
+    };
+
+    const enforceTagCeiling = (state, record) => {
+      const topLimit = state.ceilingY + record.height / 2;
+
+      if (!record.ceilingEnabled && record.body.position.y >= topLimit) {
+        record.ceilingEnabled = true;
+        record.body.collisionFilter.mask = 0xffffffff;
+      }
+
+      if (record.ceilingEnabled && record.body.position.y < topLimit) {
+        Body.setPosition(record.body, {
+          x: record.body.position.x,
+          y: topLimit,
+        });
+        Body.setVelocity(record.body, {
+          x: record.body.velocity.x,
+          y: Math.abs(record.body.velocity.y) * 0.25,
+        });
+      }
+    };
+
+    const renderTagState = (state) => {
+      state.records.forEach((record) => {
+        if (!record.spawned) return;
+        enforceTagCeiling(state, record);
+        renderTagRecord(record);
+      });
+    };
+
+    const repelTagsFromPointer = (state) => {
+      if (!state.pointer.active) return;
+      const radius = 160;
+
+      state.records.forEach((record) => {
+        if (!record.spawned) return;
+        let dx = record.body.position.x - state.pointer.x;
+        let dy = record.body.position.y - state.pointer.y;
+        let distance = Math.hypot(dx, dy);
+        if (distance >= radius) return;
+        if (distance < 0.001) {
+          dx = Math.random() - 0.5;
+          dy = Math.random() - 0.5;
+          distance = Math.hypot(dx, dy) || 1;
+        }
+
+        const proximity = 1 - distance / radius;
+        const force = 0.006 * record.body.mass * proximity;
+        Sleeping.set(record.body, false);
+        Body.applyForce(record.body, record.body.position, {
+          x: (dx / distance) * force,
+          y: (dy / distance) * force,
+        });
+      });
+    };
+
+    const runTagPhysics = (time) => {
+      tagPhysicsFrame = 0;
+      const delta = previousPhysicsTime
+        ? Math.min(1000 / 30, Math.max(1000 / 120, time - previousPhysicsTime))
+        : 1000 / 60;
+      previousPhysicsTime = time;
+
+      activeTagPhysics.forEach((state) => {
+        if (!canRunTagPhysics(state)) {
+          activeTagPhysics.delete(state);
+          return;
+        }
+
+        repelTagsFromPointer(state);
+        Engine.update(state.engine, delta);
+        renderTagState(state);
+
+        const allSpawned = state.spawnedCount === state.records.length;
+        const allSleeping = allSpawned && state.records.every(({ body }) => body.isSleeping);
+        if (allSleeping) activeTagPhysics.delete(state);
+      });
+
+      if (activeTagPhysics.size) {
+        tagPhysicsFrame = requestAnimationFrame(runTagPhysics);
+      } else {
+        previousPhysicsTime = 0;
+      }
+    };
+
+    const activateTagPhysics = (state) => {
+      if (!canRunTagPhysics(state)) return;
+      activeTagPhysics.add(state);
+      if (!tagPhysicsFrame) tagPhysicsFrame = requestAnimationFrame(runTagPhysics);
+    };
+
+    const rebuildTagBoundaries = (state) => {
+      state.boundaries.forEach((boundary) => Composite.remove(state.engine.world, boundary));
+
+      const thickness = 80;
+      const wallHeight = state.height + 400;
+      const wallY = state.height / 2 - 100;
+      state.boundaries = [
+        Bodies.rectangle(
+          state.width / 2,
+          state.ceilingY - thickness / 2,
+          state.width + thickness * 2,
+          thickness,
+          {
+            isStatic: true,
+            collisionFilter: { category: TAG_CEILING_CATEGORY },
+          },
+        ),
+        Bodies.rectangle(
+          state.width / 2,
+          state.height + thickness / 2,
+          state.width + thickness * 2,
+          thickness,
+          { isStatic: true },
+        ),
+        Bodies.rectangle(-thickness / 2, wallY, thickness, wallHeight, { isStatic: true }),
+        Bodies.rectangle(
+          state.width + thickness / 2,
+          wallY,
+          thickness,
+          wallHeight,
+          { isStatic: true },
+        ),
+      ];
+      Composite.add(state.engine.world, state.boundaries);
+    };
+
+    const resizeTagPhysics = (state) => {
+      if (!state.ready) return;
+      const rect = state.container.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+
+      state.width = rect.width;
+      state.height = rect.height;
+      const titleRect = state.service?.querySelector('.service-title')?.getBoundingClientRect();
+      state.ceilingY = titleRect ? Math.min(0, titleRect.top - rect.top) : 0;
+      state.container.style.setProperty('--tag-ceiling-y', `${state.ceilingY}px`);
+      rebuildTagBoundaries(state);
+
+      state.records.forEach((record) => {
+        if (!record.spawned) return;
+        const minX = Math.min(record.width / 2, state.width / 2);
+        const maxX = Math.max(minX, state.width - record.width / 2);
+        const minY = Math.min(record.height / 2, state.height / 2);
+        const maxY = Math.max(minY, state.height - record.height / 2);
+        Body.setPosition(record.body, {
+          x: Math.min(maxX, Math.max(minX, record.body.position.x)),
+          y: Math.min(maxY, Math.max(minY, record.body.position.y)),
+        });
+        enforceTagCeiling(state, record);
+        Sleeping.set(record.body, false);
+        renderTagRecord(record);
+      });
+
+      activateTagPhysics(state);
+    };
+
+    const spawnTag = (state, record) => {
+      if (record.spawned) return;
+      const minX = Math.min(record.width / 2, state.width / 2);
+      const maxX = Math.max(minX, state.width - record.width / 2);
+      const spawnX = minX + Math.random() * (maxX - minX);
+      const spawnY = state.ceilingY - (60 + Math.random() * 100);
+
+      Body.setPosition(record.body, { x: spawnX, y: spawnY });
+      Body.setAngle(record.body, (Math.random() - 0.5) * 0.4);
+      Body.setAngularVelocity(record.body, (Math.random() - 0.5) * 0.05);
+      Composite.add(state.engine.world, record.body);
+      record.spawned = true;
+      state.spawnedCount += 1;
+      record.element.style.opacity = '1';
+      renderTagRecord(record);
+      activateTagPhysics(state);
+    };
+
+    const startTagCascade = (state) => {
+      state.startRequested = true;
+      if (!state.ready || state.started) return;
+      state.started = true;
+      state.records.forEach((record, index) => {
+        window.setTimeout(() => spawnTag(state, record), index * 90);
+      });
+    };
+
+    const initializeTagPhysics = (state) => {
+      state.records = state.chips.map((element) => {
+        const rect = element.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
+        const body = Bodies.rectangle(0, 0, width, height, {
+          chamfer: { radius: height / 2 },
+          restitution: 0.2,
+          friction: 0.3,
+          frictionAir: 0.015,
+          collisionFilter: {
+            category: 0x0001,
+            mask: TAG_MASK_WITHOUT_CEILING,
+          },
+        });
+        return { element, body, width, height, spawned: false, ceilingEnabled: false };
+      });
+      state.ready = true;
+      resizeTagPhysics(state);
+      if (state.startRequested) startTagCascade(state);
+    };
+
+    const servicePhysicsObserver = new IntersectionObserver((entries, observer) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const state = tagPhysicsStates.find(({ service }) => service === entry.target);
+        if (state) startTagCascade(state);
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: 0.25 });
+
+    tagPhysicsStates.forEach((state) => {
+      if (state.service) servicePhysicsObserver.observe(state.service);
+
+      const resizeObserver = new ResizeObserver(() => resizeTagPhysics(state));
+      resizeObserver.observe(state.container);
+
+      if (pointerFine) {
+        const updateTagPointer = (event) => {
+          const rect = state.container.getBoundingClientRect();
+          state.pointer.active = true;
+          state.pointer.x = event.clientX - rect.left;
+          state.pointer.y = event.clientY - rect.top;
+          activateTagPhysics(state);
+        };
+
+        state.container.addEventListener('pointerenter', updateTagPointer, { passive: true });
+        state.container.addEventListener('pointermove', updateTagPointer, { passive: true });
+        state.container.addEventListener('pointerleave', () => {
+          state.pointer.active = false;
+        });
+      }
+    });
+
+    if (aboutSection) {
+      const aboutPhysicsObserver = new IntersectionObserver(([entry]) => {
+        aboutPhysicsVisible = entry.isIntersecting;
+        if (aboutPhysicsVisible) {
+          tagPhysicsStates.forEach(activateTagPhysics);
+        } else {
+          activeTagPhysics.clear();
+        }
+      });
+      aboutPhysicsObserver.observe(aboutSection);
+    }
+
+    (document.fonts?.ready || Promise.resolve()).then(() => {
+      tagPhysicsStates.forEach(initializeTagPhysics);
     });
   }
 }
 
 // ---------------------------------------------------------------------------
-// Scroll source: native scrolling on every viewport, rAF-throttled so all
-// scroll-dependent effects are still written together once per frame.
+// Stats counter: one viewport observer, no scroll/resize listeners.
 // ---------------------------------------------------------------------------
-let nativeScrollScheduled = false;
+const statsSection = document.querySelector('.stats');
+const statNums = Array.from(document.querySelectorAll('.stat-num[data-count-to]'));
 
-const onNativeScroll = () => {
-  if (nativeScrollScheduled) return;
-  nativeScrollScheduled = true;
-  requestAnimationFrame(() => {
-    nativeScrollScheduled = false;
-    updateScrollAnimations(window.scrollY);
+const formatStatValue = (el, value) => {
+  const suffix = el.dataset.suffix || '';
+  return `${String(value).padStart(2, '0')}${suffix}`;
+};
+
+const resetStatValues = () => {
+  statNums.forEach((el) => {
+    el.textContent = formatStatValue(el, 0);
   });
 };
 
-window.addEventListener('scroll', onNativeScroll, { passive: true });
+const setFinalStatValues = () => {
+  statNums.forEach((el) => {
+    const target = Number.parseInt(el.dataset.countTo || '0', 10);
+    el.textContent = formatStatValue(el, target);
+  });
+};
+
+const animateStatValues = () => {
+  const duration = 1800;
+  let start = null;
+
+  const tick = (now) => {
+    if (start === null) start = now;
+
+    const progress = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+
+    statNums.forEach((el) => {
+      const target = Number.parseInt(el.dataset.countTo || '0', 10);
+      const value = Math.round(target * eased);
+      el.textContent = formatStatValue(el, value);
+    });
+
+    if (progress < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      setFinalStatValues();
+    }
+  };
+
+  requestAnimationFrame(tick);
+};
+
+if (statsSection && statNums.length) {
+  if (prefersReducedMotion) {
+    setFinalStatValues();
+  } else {
+    resetStatValues();
+    const statsTrigger = statsSection.querySelector('.stat') || statsSection;
+    let hasCounted = false;
+    let statsObserver;
+
+    const startStatsCounter = () => {
+      if (hasCounted) return;
+      hasCounted = true;
+      animateStatValues();
+      statsObserver?.disconnect();
+    };
+
+    const startIfStatsAreVisible = () => {
+      const rect = statsTrigger.getBoundingClientRect();
+      const viewportHeight = document.documentElement.clientHeight;
+      if (rect.bottom > 0 && rect.top < viewportHeight) startStatsCounter();
+    };
+
+    statsObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) startStatsCounter();
+    }, { threshold: 0.01 });
+
+    statsObserver.observe(statsTrigger);
+
+    if (document.readyState === 'complete') {
+      requestAnimationFrame(startIfStatsAreVisible);
+    } else {
+      window.addEventListener('load', () => {
+        requestAnimationFrame(startIfStatsAreVisible);
+      }, { once: true });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Selected work: arrows, horizontal wheel/trackpad and pointer dragging.
+// ---------------------------------------------------------------------------
+const worksSection = document.querySelector('.works');
+const worksInner = worksSection?.querySelector('.works-inner');
+const worksTitle = worksSection?.querySelector('.works-title');
+const worksViewport = worksSection?.querySelector('.works-viewport');
+const worksTrack = worksSection?.querySelector('.works-track');
+const workCards = Array.from(worksSection?.querySelectorAll('.work-card') || []);
+const worksPrev = worksSection?.querySelector('.works-arrow--prev');
+const worksNext = worksSection?.querySelector('.works-arrow--next');
+
+const WORK_CARD_WIDTH = 350;
+const WORK_CARD_GAP = 15;
+const WORK_SLIDE_STEP = WORK_CARD_WIDTH + WORK_CARD_GAP;
+const WORK_END_INSET = 30;
+
+let worksPosition = 0;
+let worksMaxPosition = 0;
+let worksStartOffset = 0;
+let worksPointerId = null;
+let worksDragStartX = 0;
+let worksDragStartPosition = 0;
+let worksDragMoved = false;
+let suppressWorksClick = false;
+let worksWheelEndTimer = 0;
+
+const clampWorksPosition = (position) => (
+  Math.min(worksMaxPosition, Math.max(0, position))
+);
+
+const renderWorksSlider = () => {
+  if (!worksTrack) return;
+  const offset = worksStartOffset - worksPosition;
+  worksTrack.style.setProperty('--works-offset', `${offset}px`);
+
+  if (worksPrev) worksPrev.disabled = worksPosition <= 0.5;
+  if (worksNext) worksNext.disabled = worksPosition >= worksMaxPosition - 0.5;
+};
+
+const measureWorks = () => {
+  if (!worksInner || !worksTitle || !worksViewport || !worksTrack || !workCards.length) return;
+
+  const innerStyles = getComputedStyle(worksInner);
+  worksStartOffset = mqMobile.matches
+    ? Number.parseFloat(innerStyles.paddingLeft) || 0
+    : worksTitle.getBoundingClientRect().left;
+
+  const lastCard = workCards[workCards.length - 1];
+  const lastCardRight = lastCard.offsetLeft + lastCard.offsetWidth;
+  worksMaxPosition = Math.max(
+    0,
+    worksStartOffset + lastCardRight - worksViewport.clientWidth + WORK_END_INSET,
+  );
+  worksPosition = clampWorksPosition(worksPosition);
+  renderWorksSlider();
+};
+
+worksPrev?.addEventListener('click', () => {
+  worksPosition = clampWorksPosition(worksPosition - WORK_SLIDE_STEP);
+  renderWorksSlider();
+});
+
+worksNext?.addEventListener('click', () => {
+  worksPosition = clampWorksPosition(worksPosition + WORK_SLIDE_STEP);
+  renderWorksSlider();
+});
+
+worksViewport?.addEventListener('wheel', (event) => {
+  const hasHorizontalIntent = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+  if (!hasHorizontalIntent && !event.shiftKey) return;
+
+  let delta = hasHorizontalIntent ? event.deltaX : event.deltaY;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) delta *= worksViewport.clientWidth;
+
+  const nextPosition = clampWorksPosition(worksPosition + delta);
+  if (nextPosition === worksPosition) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  worksTrack?.classList.add('is-direct-manipulation');
+  worksPosition = nextPosition;
+  renderWorksSlider();
+
+  window.clearTimeout(worksWheelEndTimer);
+  worksWheelEndTimer = window.setTimeout(() => {
+    worksTrack?.classList.remove('is-direct-manipulation');
+  }, 100);
+}, { passive: false });
+
+worksViewport?.addEventListener('pointerdown', (event) => {
+  if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+
+  window.clearTimeout(worksWheelEndTimer);
+  worksPointerId = event.pointerId;
+  worksDragStartX = event.clientX;
+  worksDragStartPosition = worksPosition;
+  worksDragMoved = false;
+  worksViewport.setPointerCapture(event.pointerId);
+});
+
+worksViewport?.addEventListener('pointermove', (event) => {
+  if (event.pointerId !== worksPointerId) return;
+
+  const dragDistance = event.clientX - worksDragStartX;
+  if (!worksDragMoved && Math.abs(dragDistance) < 3) return;
+
+  worksDragMoved = true;
+  worksTrack?.classList.add('is-direct-manipulation');
+  worksViewport.classList.add('is-dragging');
+  worksPosition = clampWorksPosition(worksDragStartPosition - dragDistance);
+  renderWorksSlider();
+});
+
+const finishWorksDrag = (event) => {
+  if (event.pointerId !== worksPointerId) return;
+
+  if (worksViewport?.hasPointerCapture(event.pointerId)) {
+    worksViewport.releasePointerCapture(event.pointerId);
+  }
+
+  suppressWorksClick = worksDragMoved;
+  if (suppressWorksClick) {
+    window.setTimeout(() => {
+      suppressWorksClick = false;
+    }, 0);
+  }
+
+  worksPointerId = null;
+  worksDragMoved = false;
+  worksViewport?.classList.remove('is-dragging');
+  worksTrack?.classList.remove('is-direct-manipulation');
+};
+
+worksViewport?.addEventListener('pointerup', finishWorksDrag);
+worksViewport?.addEventListener('pointercancel', finishWorksDrag);
+
+worksViewport?.addEventListener('click', (event) => {
+  if (!suppressWorksClick) return;
+  event.preventDefault();
+  event.stopPropagation();
+}, true);
+
+if (worksSection && workCards.length) {
+  if (prefersReducedMotion) {
+    workCards.forEach((card) => card.classList.add('is-in'));
+  } else {
+    const worksObserver = new IntersectionObserver(([entry], observer) => {
+      if (!entry.isIntersecting) return;
+      workCards.forEach((card) => card.classList.add('is-in'));
+      observer.unobserve(worksSection);
+    }, { threshold: 0.2 });
+
+    worksObserver.observe(worksSection);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MLK.STUDIO pixel grid: one responsive Canvas 2D surface. The static grid is
+// redrawn only on resize; rAF runs while hovered or while residual heat fades.
+// ---------------------------------------------------------------------------
+const pixelsSection = document.querySelector('.pixels');
+const pixelsCanvas = pixelsSection?.querySelector('.pixels-canvas');
+
+if (pixelsSection && pixelsCanvas) {
+  const PIXEL_SIZE = 16;
+  const PIXEL_GAP = 4;
+  const PIXEL_STEP = PIXEL_SIZE + PIXEL_GAP;
+  const PIXEL_FADE_DURATION = 1000;
+  const PIXEL_PATH_SAMPLE_STEP = 2;
+  const PIXEL_LOGO = 'MLK.STUDIO';
+  const PIXEL_LOGO_HEIGHT = 7;
+  const PIXEL_LOGO_INSET_CELLS = 1;
+  const GLYPHS = {
+    M: ['10001', '11011', '10101', '10001', '10001', '10001', '10001'],
+    L: ['10000', '10000', '10000', '10000', '10000', '10000', '11111'],
+    K: ['10001', '10010', '10100', '11000', '10100', '10010', '10001'],
+    '.': ['00', '00', '00', '00', '00', '11', '11'],
+    S: ['01111', '10000', '10000', '01110', '00001', '00001', '11110'],
+    T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
+    U: ['10001', '10001', '10001', '10001', '10001', '10001', '01110'],
+    D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
+    I: ['11111', '00100', '00100', '00100', '00100', '00100', '11111'],
+    O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],
+  };
+
+  const logoCells = new Set();
+  let logoWidth = 0;
+
+  [...PIXEL_LOGO].forEach((character, characterIndex) => {
+    const glyph = GLYPHS[character];
+    glyph.forEach((row, rowIndex) => {
+      [...row].forEach((value, colIndex) => {
+        if (value === '1') logoCells.add(`${logoWidth + colIndex},${rowIndex}`);
+      });
+    });
+    logoWidth += glyph[0].length;
+    if (characterIndex < PIXEL_LOGO.length - 1) logoWidth += 1;
+  });
+
+  const parseHexColor = (value) => {
+    const match = value.trim().match(/^#([\da-f]{6})$/i);
+    if (!match) return { r: 255, g: 90, b: 31 };
+    const number = Number.parseInt(match[1], 16);
+    return {
+      r: (number >> 16) & 255,
+      g: (number >> 8) & 255,
+      b: number & 255,
+    };
+  };
+
+  const accent = parseHexColor(
+    getComputedStyle(document.documentElement).getPropertyValue('--pixel-accent'),
+  );
+  const context = pixelsCanvas.getContext('2d', { alpha: true });
+  const pointer = { active: false, hasPosition: false, x: 0, y: 0, cellIndex: -1 };
+  let cssWidth = 0;
+  let cssHeight = 0;
+  let columns = 0;
+  let rows = 0;
+  let gridOffsetX = 0;
+  let gridOffsetY = 0;
+  let baseAlphas = new Float32Array(0);
+  let heat = new Float32Array(0);
+  let pixelsFrame = 0;
+  let previousPixelsTime = 0;
+
+  const isLogoCell = (col, row) => {
+    const logoColumns = columns - PIXEL_LOGO_INSET_CELLS * 2;
+    const logoRows = rows - PIXEL_LOGO_INSET_CELLS * 2;
+    const logoCol = col - PIXEL_LOGO_INSET_CELLS;
+    const logoRow = row - PIXEL_LOGO_INSET_CELLS;
+    if (
+      logoColumns <= 0 ||
+      logoRows <= 0 ||
+      logoCol < 0 ||
+      logoCol >= logoColumns ||
+      logoRow < 0 ||
+      logoRow >= logoRows
+    ) return false;
+
+    const sourceCol = Math.min(
+      logoWidth - 1,
+      Math.floor((logoCol / logoColumns) * logoWidth),
+    );
+    const sourceRow = Math.min(
+      PIXEL_LOGO_HEIGHT - 1,
+      Math.floor((logoRow / logoRows) * PIXEL_LOGO_HEIGHT),
+    );
+    return logoCells.has(`${sourceCol},${sourceRow}`);
+  };
+
+  const pixelColor = (baseAlpha, factor) => {
+    if (factor <= 0) return `rgba(255, 255, 255, ${baseAlpha})`;
+    if (baseAlpha <= 0) {
+      return `rgba(${accent.r}, ${accent.g}, ${accent.b}, ${factor})`;
+    }
+    const red = Math.round(255 + (accent.r - 255) * factor);
+    const green = Math.round(255 + (accent.g - 255) * factor);
+    const blue = Math.round(255 + (accent.b - 255) * factor);
+    const alpha = baseAlpha + (1 - baseAlpha) * factor;
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  };
+
+  const drawPixelGrid = (withHeat = false) => {
+    if (!context || !cssWidth || !cssHeight) return;
+    context.clearRect(0, 0, cssWidth, cssHeight);
+
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < columns; col += 1) {
+        const index = row * columns + col;
+        context.fillStyle = pixelColor(baseAlphas[index], withHeat ? heat[index] : 0);
+        context.fillRect(
+          gridOffsetX + col * PIXEL_STEP,
+          gridOffsetY + row * PIXEL_STEP,
+          PIXEL_SIZE,
+          PIXEL_SIZE,
+        );
+      }
+    }
+  };
+
+  const getPixelCellIndex = (x, y) => {
+    const localX = x - gridOffsetX;
+    const localY = y - gridOffsetY;
+    if (localX < 0 || localY < 0) return -1;
+
+    const col = Math.floor(localX / PIXEL_STEP);
+    const row = Math.floor(localY / PIXEL_STEP);
+    if (col < 0 || col >= columns || row < 0 || row >= rows) return -1;
+    if (localX - col * PIXEL_STEP >= PIXEL_SIZE) return -1;
+    if (localY - row * PIXEL_STEP >= PIXEL_SIZE) return -1;
+    return row * columns + col;
+  };
+
+  const heatPixelPath = (startX, startY, endX, endY) => {
+    const distance = Math.hypot(endX - startX, endY - startY);
+    const samples = Math.max(1, Math.ceil(distance / PIXEL_PATH_SAMPLE_STEP));
+
+    for (let sample = 0; sample <= samples; sample += 1) {
+      const progress = sample / samples;
+      const index = getPixelCellIndex(
+        startX + (endX - startX) * progress,
+        startY + (endY - startY) * progress,
+      );
+      if (index >= 0) heat[index] = 1;
+    }
+  };
+
+  const renderPixelsHeat = (time) => {
+    pixelsFrame = 0;
+    const delta = previousPixelsTime ? Math.max(0, time - previousPixelsTime) : 0;
+    previousPixelsTime = time;
+    const cooling = delta / PIXEL_FADE_DURATION;
+    let maxHeat = 0;
+
+    for (let index = 0; index < heat.length; index += 1) {
+      if (pointer.active && index === pointer.cellIndex) {
+        heat[index] = 1;
+      } else if (heat[index] > 0) {
+        heat[index] = Math.max(0, heat[index] - cooling);
+      }
+      if (heat[index] > maxHeat) maxHeat = heat[index];
+    }
+
+    drawPixelGrid(true);
+
+    if (pointer.active || maxHeat > 0.001) {
+      pixelsFrame = requestAnimationFrame(renderPixelsHeat);
+    } else {
+      heat.fill(0);
+      previousPixelsTime = 0;
+      drawPixelGrid(false);
+    }
+  };
+
+  const startPixelsHeat = () => {
+    if (!pixelsFrame) {
+      previousPixelsTime = 0;
+      pixelsFrame = requestAnimationFrame(renderPixelsHeat);
+    }
+  };
+
+  const resizePixels = () => {
+    const rect = pixelsCanvas.getBoundingClientRect();
+    cssWidth = rect.width;
+    cssHeight = rect.height;
+    const dpr = window.devicePixelRatio || 1;
+
+    pixelsCanvas.width = Math.max(1, Math.round(cssWidth * dpr));
+    pixelsCanvas.height = Math.max(1, Math.round(cssHeight * dpr));
+    context?.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    columns = Math.max(0, Math.floor((cssWidth + PIXEL_GAP) / PIXEL_STEP));
+    rows = Math.max(0, Math.floor((cssHeight + PIXEL_GAP) / PIXEL_STEP));
+    const gridWidth = columns > 0 ? columns * PIXEL_SIZE + (columns - 1) * PIXEL_GAP : 0;
+    const gridHeight = rows > 0 ? rows * PIXEL_SIZE + (rows - 1) * PIXEL_GAP : 0;
+    gridOffsetX = (cssWidth - gridWidth) / 2;
+    gridOffsetY = (cssHeight - gridHeight) / 2;
+    baseAlphas = new Float32Array(columns * rows);
+    heat = new Float32Array(columns * rows);
+
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < columns; col += 1) {
+        baseAlphas[row * columns + col] = isLogoCell(col, row) ? 0.1 : 0;
+      }
+    }
+
+    pointer.cellIndex = getPixelCellIndex(pointer.x, pointer.y);
+    if (pointer.active && pointer.cellIndex >= 0) heat[pointer.cellIndex] = 1;
+    previousPixelsTime = 0;
+    drawPixelGrid(pointer.active);
+  };
+
+  if (pointerFine && !prefersReducedMotion) {
+    const updatePixelsPointer = (event) => {
+      const nextX = event.offsetX;
+      const nextY = event.offsetY;
+      if (pointer.hasPosition) {
+        heatPixelPath(pointer.x, pointer.y, nextX, nextY);
+      }
+      pointer.x = nextX;
+      pointer.y = nextY;
+      pointer.cellIndex = getPixelCellIndex(nextX, nextY);
+      if (pointer.cellIndex >= 0) heat[pointer.cellIndex] = 1;
+      pointer.hasPosition = true;
+    };
+
+    pixelsCanvas.addEventListener('pointerenter', (event) => {
+      pointer.active = true;
+      pointer.hasPosition = false;
+      updatePixelsPointer(event);
+      startPixelsHeat();
+    }, { passive: true });
+
+    pixelsCanvas.addEventListener('pointermove', updatePixelsPointer, { passive: true });
+
+    pixelsCanvas.addEventListener('pointerleave', () => {
+      pointer.active = false;
+      pointer.hasPosition = false;
+      pointer.cellIndex = -1;
+      startPixelsHeat();
+    }, { passive: true });
+  }
+
+  const pixelsResizeObserver = new ResizeObserver(resizePixels);
+  pixelsResizeObserver.observe(pixelsSection);
+  resizePixels();
+}
+
+// ---------------------------------------------------------------------------
+// Scroll source: Lenis at 30% of the previous wheel speed on desktop.
+// Mobile stays native.
+// ---------------------------------------------------------------------------
+let lenis = null;
+
+const setScrollMode = () => {
+  const useLenis = !mqMobile.matches && !prefersReducedMotion;
+
+  if (useLenis && !lenis) {
+    lenis = new Lenis({
+      duration: 1.1,
+      smoothWheel: true,
+      wheelMultiplier: 0.3,
+      syncTouch: false,
+      autoResize: false,
+    });
+  } else if (!useLenis) {
+    if (lenis) {
+      lenis.destroy();
+      lenis = null;
+    }
+  }
+};
+
+const masterRaf = (time) => {
+  lenis?.raf(time);
+  requestAnimationFrame(masterRaf);
+};
+requestAnimationFrame(masterRaf);
 
 // ---------------------------------------------------------------------------
 // Resize: react to WIDTH changes and orientation only. Height-only resizes
@@ -789,7 +1509,9 @@ const applyViewport = () => {
   renderer.setPixelRatio(rendererPixelRatio());
   renderer.setSize(viewportWidth, canvasHeight, false);
   uniforms.uResolution.value.set(viewportWidth, canvasHeight);
-  measureServices();
+  setScrollMode();
+  measureWorks();
+  lenis?.resize();
 };
 
 const scheduleViewportRefresh = () => {
@@ -807,6 +1529,9 @@ mqMobile.addEventListener('change', scheduleViewportRefresh);
 // ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
-measureServices();
-(document.fonts?.ready || Promise.resolve()).then(measureServices);
-updateScrollAnimations(window.scrollY);
+setScrollMode();
+measureWorks();
+(document.fonts?.ready || Promise.resolve()).then(() => {
+  measureWorks();
+  lenis?.resize();
+});
