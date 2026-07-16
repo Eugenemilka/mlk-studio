@@ -325,7 +325,8 @@ body.cursor-hide .cursor-ellipse {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-start;
-  gap: 1rem;
+  column-gap: 2rem;
+  row-gap: 1rem;
   min-width: 0;
   width: 100%;
 }
