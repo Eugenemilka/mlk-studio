@@ -460,6 +460,7 @@ const uniforms = {
   uMouseInfluence: { value: 0.0 },
   uTime: { value: 0 },
   uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+  uImageResolution: { value: new THREE.Vector2(1, 1) },
 };
 
 const material = new THREE.ShaderMaterial({
@@ -482,6 +483,7 @@ const material = new THREE.ShaderMaterial({
     uniform float uMouseInfluence;
     uniform float uTime;
     uniform vec2 uResolution;
+    uniform vec2 uImageResolution;
     varying vec2 vUv;
 
     void main() {
@@ -504,7 +506,13 @@ const material = new THREE.ShaderMaterial({
       vec2 disp = texture2D(uDisplacement, uv + vec2(uTime * 0.028, -uTime * 0.018)).rg - 0.5;
       uv += disp * ripple * 0.09 * (0.75 + uMouseInfluence * 0.3);
 
-      gl_FragColor = texture2D(uTexture, uv);
+      vec2 s = uResolution / uImageResolution;
+      float scale = max(s.x, s.y);
+      vec2 size = uImageResolution * scale;
+      vec2 offset = (uResolution - size) * 0.5;
+      vec2 coverUv = (uv * uResolution - offset) / size;
+
+      gl_FragColor = texture2D(uTexture, coverUv);
     }
   `,
 });
@@ -566,6 +574,7 @@ Promise.all(texturePaths.map(loadTexture)).then(([texture, displacement, flowMap
   uniforms.uTexture.value = texture;
   uniforms.uDisplacement.value = displacement;
   uniforms.uFlowMap.value = flowMap;
+  uniforms.uImageResolution.value.set(texture.image.width, texture.image.height);
   ready = true;
   animate();
 });
@@ -640,8 +649,13 @@ if (aboutSection && serviceEls.length) {
     updateServicesCollapse();
   };
 
+  const scheduleServicesMeasure = () => {
+    requestAnimationFrame(() => requestAnimationFrame(measureServices));
+  };
+
   window.addEventListener('scroll', updateServicesCollapse, { passive: true });
-  window.addEventListener('resize', measureServices);
+  window.addEventListener('resize', scheduleServicesMeasure);
+  window.addEventListener('orientationchange', scheduleServicesMeasure);
   (document.fonts?.ready || Promise.resolve()).then(measureServices);
 
   if (prefersReducedMotion) {
