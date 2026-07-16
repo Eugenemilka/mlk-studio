@@ -1,5 +1,4 @@
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import Lenis from 'https://unpkg.com/lenis@1.3.4/dist/lenis.mjs';
 
 // ---------------------------------------------------------------------------
 // Viewport state.
@@ -774,7 +773,6 @@ const measureServices = () => {
   aboutSection.style.height = `${aboutHeight}px`;
   lastWrapHeights.fill(-1);
   lastWrapOpacities.fill(-1);
-  lenis?.resize();
   updateServicesCollapse(currentScroll);
   if (!prefersReducedMotion && !mqMobile.matches) updateHeroParallax(currentScroll);
 };
@@ -804,10 +802,9 @@ if (serviceEls.length) {
 }
 
 // ---------------------------------------------------------------------------
-// Scroll source: Lenis on desktop only. Mobile uses fully native scrolling
-// with a rAF-throttled listener (Lenis is never created there).
+// Scroll source: native scrolling on every viewport, rAF-throttled so all
+// scroll-dependent effects are still written together once per frame.
 // ---------------------------------------------------------------------------
-let lenis = null;
 let nativeScrollScheduled = false;
 
 const onNativeScroll = () => {
@@ -819,33 +816,7 @@ const onNativeScroll = () => {
   });
 };
 
-const setScrollMode = () => {
-  const useLenis = !mqMobile.matches && !prefersReducedMotion;
-
-  if (useLenis && !lenis) {
-    window.removeEventListener('scroll', onNativeScroll);
-    lenis = new Lenis({
-      duration: 1.1,
-      smoothWheel: true,
-      syncTouch: false,
-      // Safari height-only viewport changes must not trigger dimension reads
-      autoResize: false,
-    });
-    lenis.on('scroll', ({ scroll }) => updateScrollAnimations(scroll));
-  } else if (!useLenis) {
-    if (lenis) {
-      lenis.destroy();
-      lenis = null;
-    }
-    window.addEventListener('scroll', onNativeScroll, { passive: true });
-  }
-};
-
-const masterRaf = (time) => {
-  lenis?.raf(time);
-  requestAnimationFrame(masterRaf);
-};
-requestAnimationFrame(masterRaf);
+window.addEventListener('scroll', onNativeScroll, { passive: true });
 
 // ---------------------------------------------------------------------------
 // Resize: react to WIDTH changes and orientation only. Height-only resizes
@@ -859,7 +830,6 @@ const applyViewport = () => {
   renderer.setPixelRatio(rendererPixelRatio());
   renderer.setSize(viewportWidth, stableVh);
   uniforms.uResolution.value.set(viewportWidth, stableVh);
-  setScrollMode();
   if (mqMobile.matches) resetHeroEffects();
   measureServices();
 };
@@ -879,7 +849,6 @@ mqMobile.addEventListener('change', scheduleViewportRefresh);
 // ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
-setScrollMode();
 measureServices();
 (document.fonts?.ready || Promise.resolve()).then(measureServices);
 updateScrollAnimations(window.scrollY);
