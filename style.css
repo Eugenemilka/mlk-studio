@@ -2112,6 +2112,27 @@ a[data-fade].is-in:focus-visible {
     padding-top: 0;
   }
 
+  .works-viewport {
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .works-viewport::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  .works-track,
+  .works-track.is-direct-manipulation {
+    padding-inline: var(--page-inset);
+    transform: none;
+    transition: none;
+  }
+
   .work-card {
     height: max(400px, calc(100vh - 360px));
     height: max(400px, calc(100svh - 360px));
@@ -2308,5 +2329,36 @@ a[data-fade].is-in:focus-visible {
   .form-modal__socials {
     justify-content: flex-start;
     margin-top: 3.5rem;
+  }
+}
+
+@media (max-width: 800px) {
+  a,
+  a * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  a:hover .nav-link-line,
+  a:focus-visible .nav-link-line,
+  a:hover .social-link-line,
+  a:focus-visible .social-link-line,
+  a:hover .btn__line,
+  a:focus-visible .btn__line {
+    transform: none !important;
+  }
+
+  .work-card--cta::before {
+    transition: none;
+  }
+
+  .work-card--cta:hover::before,
+  .work-card--cta:focus-within::before {
+    color: rgba(244, 239, 227, 0.45);
+    background-position:
+      left top, left top,
+      right top, right top,
+      left bottom, left bottom,
+      right bottom, right bottom;
   }
 }
