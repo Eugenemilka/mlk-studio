@@ -368,11 +368,13 @@ body.cursor-hide .cursor-ellipse {
   gap: 0.45rem;
   margin-left: auto;
   font-size: 0.78rem;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
   white-space: nowrap;
+  pointer-events: auto;
 }
 
 .language-switcher button {
+  display: inline-block;
   padding: 5px;
   margin: -5px;
   border: 0;
@@ -380,6 +382,8 @@ body.cursor-hide .cursor-ellipse {
   color: var(--text);
   font: inherit;
   letter-spacing: inherit;
+  text-transform: none;
+  overflow: hidden;
   opacity: 0.1;
   transition: opacity 0.3s var(--ease);
 }
@@ -391,6 +395,16 @@ body.cursor-hide .cursor-ellipse {
 .language-switcher button:hover,
 .language-switcher button:focus-visible {
   opacity: 1;
+}
+
+.language-switcher button:hover .nav-link-line,
+.language-switcher button:focus-visible .nav-link-line {
+  transform: translateY(-105%);
+}
+
+.language-switcher button:hover .nav-link-line:last-child,
+.language-switcher button:focus-visible .nav-link-line:last-child {
+  transform: translateY(calc(-105% - 5px));
 }
 
 .language-switcher__separator {
