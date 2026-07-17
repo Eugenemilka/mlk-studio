@@ -1042,23 +1042,27 @@ h1 {
 .works-viewport {
   width: 100%;
   margin-top: 3rem;
-  overflow: hidden;
-  touch-action: pan-y;
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   user-select: none;
   -webkit-user-select: none;
 }
 
+.works-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .works-track {
+  box-sizing: content-box;
   display: flex;
   width: max-content;
   gap: 15px;
-  transform: translate3d(var(--works-offset, 0px), 0, 0);
-  transition: transform 0.6s var(--ease);
-  will-change: transform;
-}
-
-.works-track.is-direct-manipulation {
-  transition: none;
+  padding: 0 30px 0 var(--works-start-offset, var(--page-inset));
 }
 
 .work-card {
@@ -1909,6 +1913,20 @@ a[data-fade].is-in:focus-visible {
     --service-sticky-top: calc(env(safe-area-inset-top, 0px) + 4rem);
   }
 
+  .stair-reveal__count {
+    top: calc(1rem + env(safe-area-inset-top, 0px));
+    right: var(--page-inset);
+    bottom: auto;
+  }
+
+  .stair-reveal__text {
+    right: var(--page-inset);
+    width: auto;
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
   .social-links {
     column-gap: 15px;
   }
@@ -2110,27 +2128,6 @@ a[data-fade].is-in:focus-visible {
     order: 2;
     max-width: none;
     padding-top: 0;
-  }
-
-  .works-viewport {
-    overflow-x: auto;
-    overflow-y: hidden;
-    touch-action: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .works-viewport::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
-  }
-
-  .works-track,
-  .works-track.is-direct-manipulation {
-    padding-inline: var(--page-inset);
-    transform: none;
-    transition: none;
   }
 
   .work-card {

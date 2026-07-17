@@ -1499,7 +1499,7 @@ if (statsSection && statNums.length) {
 }
 
 // ---------------------------------------------------------------------------
-// Selected work: arrows, horizontal wheel/trackpad and pointer dragging.
+// Selected work: native horizontal scrolling with arrow controls.
 // ---------------------------------------------------------------------------
 const worksSection = document.querySelector('.works');
 const worksInner = worksSection?.querySelector('.works-inner');
@@ -1513,171 +1513,41 @@ const worksNext = worksSection?.querySelector('.works-arrow--next');
 const WORK_CARD_WIDTH = 350;
 const WORK_CARD_GAP = 15;
 const WORK_SLIDE_STEP = WORK_CARD_WIDTH + WORK_CARD_GAP;
-const WORK_END_INSET = 30;
 
-let worksPosition = 0;
-let worksMaxPosition = 0;
-let worksStartOffset = 0;
-let worksPointerId = null;
-let worksDragStartX = 0;
-let worksDragStartPosition = 0;
-let worksDragMoved = false;
-let suppressWorksClick = false;
-let worksWheelEndTimer = 0;
-
-const clampWorksPosition = (position) => (
-  Math.min(worksMaxPosition, Math.max(0, position))
-);
-
-const renderMobileWorksControls = () => {
+const renderWorksControls = () => {
   if (!worksViewport) return;
   const maxScroll = Math.max(0, worksViewport.scrollWidth - worksViewport.clientWidth);
   if (worksPrev) worksPrev.disabled = worksViewport.scrollLeft <= 0.5;
   if (worksNext) worksNext.disabled = worksViewport.scrollLeft >= maxScroll - 0.5;
 };
 
-const renderWorksSlider = () => {
-  if (!worksTrack) return;
-  if (mqMobile.matches) {
-    renderMobileWorksControls();
-    return;
-  }
-  const offset = worksStartOffset - worksPosition;
-  worksTrack.style.setProperty('--works-offset', `${offset}px`);
-
-  if (worksPrev) worksPrev.disabled = worksPosition <= 0.5;
-  if (worksNext) worksNext.disabled = worksPosition >= worksMaxPosition - 0.5;
-};
-
 const measureWorks = () => {
   if (!worksInner || !worksTitle || !worksViewport || !worksTrack || !workCards.length) return;
-
-  if (mqMobile.matches) {
-    worksMaxPosition = Math.max(0, worksViewport.scrollWidth - worksViewport.clientWidth);
-    renderMobileWorksControls();
-    return;
-  }
-
-  worksViewport.scrollLeft = 0;
-  worksStartOffset = worksTitle.getBoundingClientRect().left;
-
-  const lastCard = workCards[workCards.length - 1];
-  const lastCardRight = lastCard.offsetLeft + lastCard.offsetWidth;
-  worksMaxPosition = Math.max(
-    0,
-    worksStartOffset + lastCardRight - worksViewport.clientWidth + WORK_END_INSET,
-  );
-  worksPosition = clampWorksPosition(worksPosition);
-  renderWorksSlider();
+  const innerStyles = getComputedStyle(worksInner);
+  const startOffset = mqMobile.matches
+    ? Number.parseFloat(innerStyles.paddingLeft) || 0
+    : worksTitle.getBoundingClientRect().left;
+  worksTrack.style.setProperty('--works-start-offset', `${startOffset}px`);
+  renderWorksControls();
 };
 
 worksPrev?.addEventListener('click', () => {
-  if (mqMobile.matches) {
-    worksViewport?.scrollBy({
-      left: -WORK_SLIDE_STEP,
-      behavior: prefersReducedMotion ? 'auto' : 'smooth',
-    });
-    return;
-  }
-  worksPosition = clampWorksPosition(worksPosition - WORK_SLIDE_STEP);
-  renderWorksSlider();
+  worksViewport?.scrollBy({
+    left: -WORK_SLIDE_STEP,
+    behavior: prefersReducedMotion ? 'auto' : 'smooth',
+  });
 });
 
 worksNext?.addEventListener('click', () => {
-  if (mqMobile.matches) {
-    worksViewport?.scrollBy({
-      left: WORK_SLIDE_STEP,
-      behavior: prefersReducedMotion ? 'auto' : 'smooth',
-    });
-    return;
-  }
-  worksPosition = clampWorksPosition(worksPosition + WORK_SLIDE_STEP);
-  renderWorksSlider();
+  worksViewport?.scrollBy({
+    left: WORK_SLIDE_STEP,
+    behavior: prefersReducedMotion ? 'auto' : 'smooth',
+  });
 });
-
-worksViewport?.addEventListener('wheel', (event) => {
-  if (mqMobile.matches) return;
-  const hasHorizontalIntent = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-  if (!hasHorizontalIntent && !event.shiftKey) return;
-
-  let delta = hasHorizontalIntent ? event.deltaX : event.deltaY;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) delta *= worksViewport.clientWidth;
-
-  const nextPosition = clampWorksPosition(worksPosition + delta);
-  if (nextPosition === worksPosition) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-  worksTrack?.classList.add('is-direct-manipulation');
-  worksPosition = nextPosition;
-  renderWorksSlider();
-
-  window.clearTimeout(worksWheelEndTimer);
-  worksWheelEndTimer = window.setTimeout(() => {
-    worksTrack?.classList.remove('is-direct-manipulation');
-  }, 100);
-}, { passive: false });
-
-worksViewport?.addEventListener('pointerdown', (event) => {
-  if (mqMobile.matches) return;
-  if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
-
-  window.clearTimeout(worksWheelEndTimer);
-  worksPointerId = event.pointerId;
-  worksDragStartX = event.clientX;
-  worksDragStartPosition = worksPosition;
-  worksDragMoved = false;
-});
-
-worksViewport?.addEventListener('pointermove', (event) => {
-  if (event.pointerId !== worksPointerId) return;
-
-  const dragDistance = event.clientX - worksDragStartX;
-  if (!worksDragMoved && Math.abs(dragDistance) < 3) return;
-
-  if (!worksDragMoved) {
-    worksDragMoved = true;
-    worksViewport.setPointerCapture(event.pointerId);
-  }
-  worksTrack?.classList.add('is-direct-manipulation');
-  worksViewport.classList.add('is-dragging');
-  worksPosition = clampWorksPosition(worksDragStartPosition - dragDistance);
-  renderWorksSlider();
-});
-
-const finishWorksDrag = (event) => {
-  if (event.pointerId !== worksPointerId) return;
-
-  if (worksViewport?.hasPointerCapture(event.pointerId)) {
-    worksViewport.releasePointerCapture(event.pointerId);
-  }
-
-  suppressWorksClick = worksDragMoved;
-  if (suppressWorksClick) {
-    window.setTimeout(() => {
-      suppressWorksClick = false;
-    }, 0);
-  }
-
-  worksPointerId = null;
-  worksDragMoved = false;
-  worksViewport?.classList.remove('is-dragging');
-  worksTrack?.classList.remove('is-direct-manipulation');
-};
-
-window.addEventListener('pointerup', finishWorksDrag);
-window.addEventListener('pointercancel', finishWorksDrag);
 
 worksViewport?.addEventListener('scroll', () => {
-  if (mqMobile.matches) renderMobileWorksControls();
+  renderWorksControls();
 }, { passive: true });
-
-worksViewport?.addEventListener('click', (event) => {
-  if (!suppressWorksClick) return;
-  event.preventDefault();
-  event.stopPropagation();
-}, true);
 
 if (worksSection && workCards.length) {
   if (prefersReducedMotion) {
