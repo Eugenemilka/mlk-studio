@@ -12,6 +12,25 @@ const clearStaleInteractiveFocus = () => {
   }
 };
 
+let pointerInitiatedFocus = false;
+
+document.addEventListener('pointerdown', () => {
+  pointerInitiatedFocus = true;
+}, { capture: true, passive: true });
+
+document.addEventListener('keydown', () => {
+  pointerInitiatedFocus = false;
+}, { capture: true });
+
+document.addEventListener('focusin', (event) => {
+  if (!pointerInitiatedFocus) return;
+
+  const interactive = event.target instanceof Element
+    ? event.target.closest('a, button')
+    : null;
+  if (interactive instanceof HTMLElement) interactive.blur();
+});
+
 document.addEventListener('pointerup', (event) => {
   const interactive = event.target instanceof Element
     ? event.target.closest('a, button')
@@ -24,6 +43,7 @@ document.addEventListener('pointerup', (event) => {
 }, { passive: true });
 
 window.addEventListener('pageshow', () => {
+  pointerInitiatedFocus = false;
   requestAnimationFrame(clearStaleInteractiveFocus);
 });
 

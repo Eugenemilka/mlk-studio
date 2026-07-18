@@ -542,3 +542,17 @@ a.case-offer__button {
     right: 15px;
   }
 }
+
+/* Pointer interaction must never leave a browser focus ring on controls. */
+:where(a, button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"]):focus,
+:where(a, button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"]):focus-visible {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button::-moz-focus-inner,
+input[type="button"]::-moz-focus-inner,
+input[type="submit"]::-moz-focus-inner,
+input[type="reset"]::-moz-focus-inner {
+  border: 0;
+}

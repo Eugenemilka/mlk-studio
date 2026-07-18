@@ -22,6 +22,25 @@ const clearStaleInteractiveFocus = () => {
   }
 };
 
+let pointerInitiatedFocus = false;
+
+document.addEventListener('pointerdown', () => {
+  pointerInitiatedFocus = true;
+}, { capture: true, passive: true });
+
+document.addEventListener('keydown', () => {
+  pointerInitiatedFocus = false;
+}, { capture: true });
+
+document.addEventListener('focusin', (event) => {
+  if (!pointerInitiatedFocus) return;
+
+  const interactive = event.target instanceof Element
+    ? event.target.closest('a, button')
+    : null;
+  if (interactive instanceof HTMLElement) interactive.blur();
+});
+
 document.addEventListener('pointerup', (event) => {
   const interactive = event.target instanceof Element
     ? event.target.closest('a, button')
@@ -34,6 +53,7 @@ document.addEventListener('pointerup', (event) => {
 }, { passive: true });
 
 window.addEventListener('pageshow', () => {
+  pointerInitiatedFocus = false;
   requestAnimationFrame(clearStaleInteractiveFocus);
 });
 
@@ -2592,6 +2612,7 @@ if (formModal) {
   let modalAfterClose = null;
   let lockedScrollY = 0;
   let savedBodyStyles = null;
+  let usesFixedBodyLock = false;
 
   formModal.inert = true;
 
@@ -2601,6 +2622,10 @@ if (formModal) {
 
   const lockModalScroll = () => {
     lockedScrollY = lenis?.scroll ?? window.scrollY;
+    lenis?.stop();
+    usesFixedBodyLock = mqMobile.matches;
+    if (!usesFixedBodyLock) return;
+
     const scrollbarWidth = Math.max(0, window.innerWidth - document.documentElement.clientWidth);
     const bodyPaddingRight = Number.parseFloat(getComputedStyle(document.body).paddingRight) || 0;
 
@@ -2614,7 +2639,6 @@ if (formModal) {
       paddingRight: document.body.style.paddingRight,
     };
 
-    lenis?.stop();
     document.body.style.position = 'fixed';
     document.body.style.top = `-${lockedScrollY}px`;
     document.body.style.left = '0';
@@ -2627,15 +2651,19 @@ if (formModal) {
   };
 
   const unlockModalScroll = () => {
-    if (!savedBodyStyles) return;
-
-    Object.assign(document.body.style, savedBodyStyles);
-    savedBodyStyles = null;
-    window.scrollTo(0, lockedScrollY);
+    const restoreFixedBody = usesFixedBodyLock && savedBodyStyles;
+    if (restoreFixedBody) {
+      Object.assign(document.body.style, savedBodyStyles);
+      savedBodyStyles = null;
+      usesFixedBodyLock = false;
+      window.scrollTo(0, lockedScrollY);
+    }
 
     if (lenis) {
       lenis.resize();
-      lenis.scrollTo(lockedScrollY, { immediate: true, force: true });
+      if (restoreFixedBody) {
+        lenis.scrollTo(lockedScrollY, { immediate: true, force: true });
+      }
       lenis.start();
     }
     updateHeroParallax(lockedScrollY);

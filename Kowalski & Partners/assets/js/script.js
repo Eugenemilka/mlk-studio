@@ -1,5 +1,47 @@
 // ---------- HERO CHIPS ----------
 // ---------- ABOUT STATS COUNTER ----------
+const clearStaleInteractiveFocus = () => {
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement && activeElement.matches('a, button')) {
+    activeElement.blur();
+  }
+};
+
+let pointerInitiatedFocus = false;
+
+document.addEventListener('pointerdown', () => {
+  pointerInitiatedFocus = true;
+}, { capture: true, passive: true });
+
+document.addEventListener('keydown', () => {
+  pointerInitiatedFocus = false;
+}, { capture: true });
+
+document.addEventListener('focusin', (event) => {
+  if (!pointerInitiatedFocus) return;
+
+  const interactive = event.target instanceof Element
+    ? event.target.closest('a, button')
+    : null;
+  if (interactive instanceof HTMLElement) interactive.blur();
+});
+
+document.addEventListener('pointerup', (event) => {
+  const interactive = event.target instanceof Element
+    ? event.target.closest('a, button')
+    : null;
+  if (interactive instanceof HTMLElement) {
+    requestAnimationFrame(() => {
+      if (document.activeElement === interactive) interactive.blur();
+    });
+  }
+}, { passive: true });
+
+window.addEventListener('pageshow', () => {
+  pointerInitiatedFocus = false;
+  requestAnimationFrame(clearStaleInteractiveFocus);
+});
+
 const statNums = document.querySelectorAll('.stat-num');
 
 function animateCount(el){
