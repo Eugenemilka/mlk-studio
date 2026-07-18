@@ -5,6 +5,28 @@ const mqMobile = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
 const pointerFine = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const clearStaleInteractiveFocus = () => {
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement && activeElement.matches('a, button')) {
+    activeElement.blur();
+  }
+};
+
+document.addEventListener('pointerup', (event) => {
+  const interactive = event.target instanceof Element
+    ? event.target.closest('a, button')
+    : null;
+  if (interactive instanceof HTMLElement) {
+    requestAnimationFrame(() => {
+      if (document.activeElement === interactive) interactive.blur();
+    });
+  }
+}, { passive: true });
+
+window.addEventListener('pageshow', () => {
+  requestAnimationFrame(clearStaleInteractiveFocus);
+});
+
 const forceThemeColor = () => {
   const meta = document.querySelector('meta[name="theme-color"]:not([media])');
   if (!meta) return;
@@ -271,6 +293,16 @@ if (pointerFine && cursorDot && cursorEllipse) {
 
 let lenis = null;
 let lenisFrame = 0;
+let scrollIdleTimer = 0;
+
+const markCaseScrolling = () => {
+  document.body.classList.add('is-scrolling');
+  clearTimeout(scrollIdleTimer);
+  scrollIdleTimer = window.setTimeout(() => {
+    document.body.classList.remove('is-scrolling');
+    scrollIdleTimer = 0;
+  }, 120);
+};
 
 const renderLenis = (time) => {
   if (!lenis) {
@@ -290,12 +322,16 @@ const setCaseScrollMode = () => {
       wheelMultiplier: 0.3,
       syncTouch: false,
     });
+    lenis.on('scroll', markCaseScrolling);
     lenisFrame = requestAnimationFrame(renderLenis);
   } else if (!shouldSmooth && lenis) {
     cancelAnimationFrame(lenisFrame);
     lenisFrame = 0;
     lenis.destroy();
     lenis = null;
+    clearTimeout(scrollIdleTimer);
+    scrollIdleTimer = 0;
+    document.body.classList.remove('is-scrolling');
   }
 };
 
@@ -387,7 +423,14 @@ document.querySelectorAll('[data-reveal]').forEach((element) => {
   const reveal = () => {
     if (element.dataset.revealTriggered === 'true') return;
     element.dataset.revealTriggered = 'true';
-    element.classList.add('is-visible');
+    element.classList.add('is-revealing');
+    requestAnimationFrame(() => {
+      element.classList.add('is-visible');
+      window.setTimeout(() => {
+        element.classList.remove('is-revealing');
+        element.classList.add('is-revealed');
+      }, 2100);
+    });
   };
 
   if (prefersReducedMotion) {
@@ -459,6 +502,93 @@ document.querySelectorAll('[data-page-transition], a[href^="index.html"]').forEa
     navigateWithTransition(link.href);
   });
 });
+
+const mobileMenuModal = document.querySelector('.mobile-menu-modal');
+const mobileMenuToggle = document.querySelector('.site-header .nav-toggle');
+
+if (mobileMenuModal && mobileMenuToggle) {
+  const mobileMenuClose = mobileMenuModal.querySelector('.mobile-menu-modal__close');
+  const mobileMenuLinks = Array.from(mobileMenuModal.querySelectorAll(
+    '.mobile-menu-modal__top .brand, .mobile-menu-modal__links a',
+  ));
+  const MOBILE_MENU_TRANSITION_MS = prefersReducedMotion ? 0 : 780;
+  let mobileMenuTimer = 0;
+  let mobileMenuOpen = false;
+
+  mobileMenuModal.inert = true;
+
+  const finishMobileMenuClose = (restoreFocus) => {
+    mobileMenuModal.classList.remove('is-mounted');
+    mobileMenuModal.setAttribute('aria-hidden', 'true');
+    mobileMenuModal.inert = true;
+    if (restoreFocus) mobileMenuToggle.focus({ preventScroll: true });
+  };
+
+  const closeMobileMenu = ({ immediate = false, restoreFocus = true } = {}) => {
+    if (!mobileMenuOpen && !mobileMenuModal.classList.contains('is-mounted')) return;
+    clearTimeout(mobileMenuTimer);
+    mobileMenuOpen = false;
+    mobileMenuModal.classList.remove('is-open');
+    document.body.classList.remove('mobile-menu-open');
+
+    if (immediate || MOBILE_MENU_TRANSITION_MS === 0) {
+      finishMobileMenuClose(restoreFocus);
+    } else {
+      mobileMenuTimer = window.setTimeout(
+        () => finishMobileMenuClose(restoreFocus),
+        MOBILE_MENU_TRANSITION_MS,
+      );
+    }
+  };
+
+  const openMobileMenu = () => {
+    if (!mqMobile.matches || mobileMenuOpen) return;
+    clearTimeout(mobileMenuTimer);
+    mobileMenuOpen = true;
+    mobileMenuModal.inert = false;
+    mobileMenuModal.setAttribute('aria-hidden', 'false');
+    mobileMenuModal.classList.add('is-mounted');
+    document.body.classList.add('mobile-menu-open');
+    requestAnimationFrame(() => {
+      mobileMenuModal.classList.add('is-open');
+      mobileMenuClose?.focus({ preventScroll: true });
+    });
+  };
+
+  mobileMenuToggle.addEventListener('click', openMobileMenu);
+  mobileMenuClose?.addEventListener('click', () => closeMobileMenu());
+  mobileMenuLinks.forEach((link) => {
+    link.addEventListener('click', () => {
+      closeMobileMenu({ immediate: link.hasAttribute('data-open-form'), restoreFocus: false });
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (!mobileMenuOpen) return;
+    if (event.key === 'Escape') {
+      closeMobileMenu();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = Array.from(mobileMenuModal.querySelectorAll('a[href], button:not([disabled])'))
+      .filter((element) => element.getClientRects().length > 0);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
+  mqMobile.addEventListener('change', (event) => {
+    if (!event.matches) closeMobileMenu({ immediate: true, restoreFocus: false });
+  });
+}
 
 const caseOffer = document.querySelector('.case-offer');
 const caseOfferClose = caseOffer?.querySelector('.case-offer__close');
@@ -690,20 +820,27 @@ if (formModal) {
   let closeTimer = 0;
   let trigger = null;
   let lockedScrollY = 0;
+  let usesFixedBodyLock = false;
 
   formModal.inert = true;
 
   const unlockScroll = () => {
-    document.body.style.position = '';
-    document.body.style.top = '';
-    document.body.style.left = '';
-    document.body.style.right = '';
-    document.body.style.width = '';
-    document.body.style.overflow = '';
-    window.scrollTo(0, lockedScrollY);
+    const restoreFixedBody = usesFixedBodyLock;
+    if (restoreFixedBody) {
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.left = '';
+      document.body.style.right = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      window.scrollTo(0, lockedScrollY);
+      usesFixedBodyLock = false;
+    }
     if (lenis) {
       lenis.resize();
-      lenis.scrollTo(lockedScrollY, { immediate: true, force: true });
+      if (restoreFixedBody) {
+        lenis.scrollTo(lockedScrollY, { immediate: true, force: true });
+      }
       lenis.start();
     }
   };
@@ -734,12 +871,15 @@ if (formModal) {
     trigger = nextTrigger;
     lockedScrollY = lenis?.scroll ?? window.scrollY;
     lenis?.stop();
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${lockedScrollY}px`;
-    document.body.style.left = '0';
-    document.body.style.right = '0';
-    document.body.style.width = '100%';
-    document.body.style.overflow = 'hidden';
+    usesFixedBodyLock = mqMobile.matches;
+    if (usesFixedBodyLock) {
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${lockedScrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
+      document.body.style.width = '100%';
+      document.body.style.overflow = 'hidden';
+    }
     document.body.classList.add('form-open');
     formModal.inert = false;
     formModal.setAttribute('aria-hidden', 'false');

@@ -15,6 +15,28 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
 let viewportWidth = window.innerWidth;
 let stableVh = window.innerHeight;
 
+const clearStaleInteractiveFocus = () => {
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement && activeElement.matches('a, button')) {
+    activeElement.blur();
+  }
+};
+
+document.addEventListener('pointerup', (event) => {
+  const interactive = event.target instanceof Element
+    ? event.target.closest('a, button')
+    : null;
+  if (interactive instanceof HTMLElement) {
+    requestAnimationFrame(() => {
+      if (document.activeElement === interactive) interactive.blur();
+    });
+  }
+}, { passive: true });
+
+window.addEventListener('pageshow', () => {
+  requestAnimationFrame(clearStaleInteractiveFocus);
+});
+
 // ---------------------------------------------------------------------------
 // Custom cursor (pointer devices only — on touch the elements are hidden)
 // ---------------------------------------------------------------------------
@@ -85,6 +107,7 @@ if (spBox && projectBtn) {
   const bounds = { maxX: 0, maxY: 0, buttonWidth: 0, buttonHeight: 0 };
   let isFollowing = false;
   let isMeasured = false;
+  let dvdInView = true;
   let dvdFrameId = 0;
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -143,6 +166,10 @@ if (spBox && projectBtn) {
   };
 
   const dvdTick = () => {
+    if (!dvdInView || dvdStatic()) {
+      dvdFrameId = 0;
+      return;
+    }
     if (isFollowing) {
       position.x += (target.x - position.x) * FOLLOW_LERP;
       position.y += (target.y - position.y) * FOLLOW_LERP;
@@ -155,7 +182,7 @@ if (spBox && projectBtn) {
   };
 
   const startDvdAnimation = () => {
-    if (dvdStatic() || dvdFrameId) return;
+    if (dvdStatic() || !dvdInView || dvdFrameId) return;
     dvdFrameId = requestAnimationFrame(dvdTick);
   };
 
@@ -202,6 +229,11 @@ if (spBox && projectBtn) {
   mqMobile.addEventListener('change', syncDvdMode);
 
   new ResizeObserver(measureDvdBounds).observe(spBox);
+  new IntersectionObserver(([entry]) => {
+    dvdInView = entry.isIntersecting;
+    if (dvdInView) startDvdAnimation();
+    else stopDvdAnimation();
+  }, { threshold: 0.01 }).observe(spBox);
   (document.fonts?.ready || Promise.resolve()).then(measureDvdBounds);
 
   measureDvdBounds();
@@ -449,7 +481,17 @@ function setupReveal(el) {
   const run = () => {
     if (el.dataset.revealTriggered === 'true') return;
     el.dataset.revealTriggered = 'true';
-    el.classList.add('is-visible');
+    el.classList.add('is-revealing');
+    requestAnimationFrame(() => {
+      el.classList.add('is-visible');
+      window.setTimeout(
+        () => {
+          el.classList.remove('is-revealing');
+          el.classList.add('is-revealed');
+        },
+        REVEAL_MAX_TOTAL_SECONDS * 1000 + 100,
+      );
+    });
   };
 
   if (prefersReducedMotion) {
@@ -688,11 +730,11 @@ const TEAM_TRANSLATIONS = {
 
 const I18N_TEXT_BINDINGS = {
   preloader: '.stair-reveal__text',
-  navServices: '.nav-menu a[href="#services"] .nav-link-line',
-  navWorks: '.nav-menu a[href="#works"] .nav-link-line',
-  navAbout: '.nav-menu a[href="#about-us"] .nav-link-line',
-  navTeam: '.nav-menu a[href="#team"] .nav-link-line',
-  navContact: '.nav-menu .book .nav-link-line, .form-modal__contact-spacer',
+  navServices: '.nav-menu a[href="#services"] .nav-link-line, .mobile-menu-modal__links a[href="#services"] .mobile-menu-modal__label',
+  navWorks: '.nav-menu a[href="#works"] .nav-link-line, .mobile-menu-modal__links a[href="#works"] .mobile-menu-modal__label',
+  navAbout: '.nav-menu a[href="#about-us"] .nav-link-line, .mobile-menu-modal__links a[href="#about-us"] .mobile-menu-modal__label',
+  navTeam: '.nav-menu a[href="#team"] .nav-link-line, .mobile-menu-modal__links a[href="#team"] .mobile-menu-modal__label',
+  navContact: '.nav-menu .book .nav-link-line, .form-modal__contact-spacer, .mobile-menu-modal__links a[data-open-form] .mobile-menu-modal__label',
   navMenu: '.nav-toggle .nav-link-line',
   heroButton: '.hero .btn__line',
   heroTitle: '.hero h1',
@@ -807,6 +849,9 @@ const applyLanguage = (language) => {
 
   const attributeBindings = [
     ['.site-header .nav', 'aria-label', 'primaryNavigation'],
+    ['.mobile-menu-modal', 'aria-label', 'primaryNavigation'],
+    ['.mobile-menu-modal__links', 'aria-label', 'primaryNavigation'],
+    ['.mobile-menu-modal__close', 'aria-label', 'close'],
     ['.form-modal__header .nav', 'aria-label', 'modalNavigation'],
     ['.language-switcher', 'aria-label', 'language'],
     ['.works-nav .works-arrow--prev', 'aria-label', 'previousProject'],
@@ -980,7 +1025,31 @@ const rendererPixelRatio = () => Math.min(window.devicePixelRatio || 1, mqMobile
 const rendererHeight = () => Math.max(1, Math.round(stableVh * (mqMobile.matches ? 0.5 : 1)));
 const initialRendererHeight = rendererHeight();
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+const createHeroRenderer = () => {
+  try {
+    return new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  } catch (error) {
+    console.warn('WebGL is unavailable; using the static hero fallback.', error);
+    const canvas = document.createElement('canvas');
+    canvas.className = 'is-webgl-fallback';
+    canvas.style.backgroundImage = 'url("assets/header-1.png?v=20260716-1")';
+    canvas.style.backgroundPosition = 'center bottom';
+    canvas.style.backgroundRepeat = 'no-repeat';
+    canvas.style.backgroundSize = 'cover';
+    return {
+      domElement: canvas,
+      setPixelRatio: () => {},
+      setSize: (width, height) => {
+        canvas.width = Math.max(1, Math.round(width));
+        canvas.height = Math.max(1, Math.round(height));
+      },
+      setClearColor: () => {},
+      render: () => {},
+    };
+  }
+};
+
+const renderer = createHeroRenderer();
 renderer.setPixelRatio(rendererPixelRatio());
 renderer.setSize(viewportWidth, initialRendererHeight, false);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1108,10 +1177,11 @@ if (pointerFine) {
 let heroInView = true;
 let webglReady = false;
 let heroRenderFrame = 0;
+let desktopScrollActive = false;
 
 const renderLoop = () => {
   heroRenderFrame = 0;
-  if (!webglReady || !heroInView) return;
+  if (!webglReady || !heroInView || desktopScrollActive) return;
 
   smoothedMouse.x += (targetMouse.x - smoothedMouse.x) * 0.06;
   smoothedMouse.y += (targetMouse.y - smoothedMouse.y) * 0.06;
@@ -1165,7 +1235,6 @@ Promise.all(
 // ---------------------------------------------------------------------------
 // Services: natural-height sticky stack. No scroll-driven layout writes.
 // ---------------------------------------------------------------------------
-const aboutSection = document.querySelector('.about');
 const serviceEls = Array.from(document.querySelectorAll('.service'));
 
 if (serviceEls.length) {
@@ -1213,12 +1282,13 @@ if (serviceTagContainers.length) {
       startRequested: false,
       started: false,
       spawnedCount: 0,
-      pointer: { active: false, x: 0, y: 0 },
+      visible: false,
+      pointer: { active: false, x: 0, y: 0, left: 0, top: 0 },
     }));
 
-    let aboutPhysicsVisible = false;
     let tagPhysicsFrame = 0;
     let previousPhysicsTime = 0;
+    const TAG_PHYSICS_FRAME_INTERVAL = 1000 / 30;
 
     tagPhysicsStates.forEach((state) => {
       state.engine.gravity.y = 1;
@@ -1228,7 +1298,7 @@ if (serviceTagContainers.length) {
       state.ready &&
       state.started &&
       state.spawnedCount > 0 &&
-      aboutPhysicsVisible;
+      state.visible;
 
     const renderTagRecord = (record) => {
       const { position, angle } = record.body;
@@ -1293,6 +1363,18 @@ if (serviceTagContainers.length) {
 
     const runTagPhysics = (time) => {
       tagPhysicsFrame = 0;
+      let pointerActive = false;
+      for (const state of activeTagPhysics) {
+        if (state.pointer.active) {
+          pointerActive = true;
+          break;
+        }
+      }
+      const frameInterval = pointerActive ? 1000 / 60 : TAG_PHYSICS_FRAME_INTERVAL;
+      if (previousPhysicsTime && time - previousPhysicsTime < frameInterval * 0.9) {
+        tagPhysicsFrame = requestAnimationFrame(runTagPhysics);
+        return;
+      }
       const delta = previousPhysicsTime
         ? Math.min(1000 / 30, Math.max(1000 / 120, time - previousPhysicsTime))
         : 1000 / 60;
@@ -1310,7 +1392,9 @@ if (serviceTagContainers.length) {
 
         const allSpawned = state.spawnedCount === state.records.length;
         const allSleeping = allSpawned && state.records.every(({ body }) => body.isSleeping);
-        if (allSleeping) activeTagPhysics.delete(state);
+        if (allSleeping) {
+          activeTagPhysics.delete(state);
+        }
       });
 
       if (activeTagPhysics.size) {
@@ -1369,6 +1453,8 @@ if (serviceTagContainers.length) {
 
       state.width = rect.width;
       state.height = rect.height;
+      state.pointer.left = rect.left;
+      state.pointer.top = rect.top;
       const titleRect = state.service?.querySelector('.service-title')?.getBoundingClientRect();
       state.ceilingY = mqMobile.matches
         ? 0
@@ -1445,49 +1531,47 @@ if (serviceTagContainers.length) {
       if (state.startRequested) startTagCascade(state);
     };
 
-    const servicePhysicsObserver = new IntersectionObserver((entries, observer) => {
+    const servicePhysicsObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        const state = tagPhysicsStates.find(({ service }) => service === entry.target);
-        if (state) startTagCascade(state);
-        observer.unobserve(entry.target);
+        const state = tagPhysicsStates.find(({ container }) => container === entry.target);
+        if (!state) return;
+
+        state.visible = entry.isIntersecting;
+        if (state.visible) {
+          startTagCascade(state);
+          activateTagPhysics(state);
+        } else {
+          activeTagPhysics.delete(state);
+        }
       });
-    }, { threshold: 0.25 });
+    }, { threshold: 0.05 });
 
     tagPhysicsStates.forEach((state) => {
-      if (state.service) servicePhysicsObserver.observe(state.service);
+      servicePhysicsObserver.observe(state.container);
 
       const resizeObserver = new ResizeObserver(() => resizeTagPhysics(state));
       resizeObserver.observe(state.container);
 
       if (pointerFine) {
-        const updateTagPointer = (event) => {
-          const rect = state.container.getBoundingClientRect();
-          state.pointer.active = true;
-          state.pointer.x = event.clientX - rect.left;
-          state.pointer.y = event.clientY - rect.top;
+        const updateTagPointerPosition = (event) => {
+          state.pointer.x = event.clientX - state.pointer.left;
+          state.pointer.y = event.clientY - state.pointer.top;
           activateTagPhysics(state);
         };
 
-        state.container.addEventListener('pointerenter', updateTagPointer, { passive: true });
-        state.container.addEventListener('pointermove', updateTagPointer, { passive: true });
+        state.container.addEventListener('pointerenter', (event) => {
+          const rect = state.container.getBoundingClientRect();
+          state.pointer.left = rect.left;
+          state.pointer.top = rect.top;
+          state.pointer.active = true;
+          updateTagPointerPosition(event);
+        }, { passive: true });
+        state.container.addEventListener('pointermove', updateTagPointerPosition, { passive: true });
         state.container.addEventListener('pointerleave', () => {
           state.pointer.active = false;
         });
       }
     });
-
-    if (aboutSection) {
-      const aboutPhysicsObserver = new IntersectionObserver(([entry]) => {
-        aboutPhysicsVisible = entry.isIntersecting;
-        if (aboutPhysicsVisible) {
-          tagPhysicsStates.forEach(activateTagPhysics);
-        } else {
-          activeTagPhysics.clear();
-        }
-      });
-      aboutPhysicsObserver.observe(aboutSection);
-    }
 
     (document.fonts?.ready || Promise.resolve()).then(() => {
       tagPhysicsStates.forEach(initializeTagPhysics);
@@ -1745,6 +1829,27 @@ if (
 
   resizeTeam = () => {
     const width = teamStage.clientWidth;
+
+    if (mqMobile.matches) {
+      cancelAnimationFrame(teamParallaxFrame);
+      teamParallaxFrame = 0;
+      teamPointer.currentX = 0;
+      teamPointer.currentY = 0;
+      teamPointer.targetX = 0;
+      teamPointer.targetY = 0;
+      teamImages.forEach((image) => {
+        image.style.transform = '';
+      });
+      teamGrid.replaceChildren();
+      teamGridColumns = 0;
+      teamGridRows = 0;
+      teamRoles.forEach((role) => {
+        role.style.removeProperty('grid-column');
+        role.style.removeProperty('grid-row');
+      });
+      return;
+    }
+
     const height = teamStage.clientHeight;
     const columns = Math.max(1, Math.round(width / TEAM_CELL_SIZE));
     const cellSize = width / columns;
@@ -1762,18 +1867,6 @@ if (
     teamRolesLayer.style.height = `${gridHeight}px`;
     teamRolesLayer.style.gridTemplateColumns = `repeat(${columns}, ${cellSize}px)`;
     teamRolesLayer.style.gridAutoRows = `${cellSize}px`;
-
-    if (mqMobile.matches) {
-      cancelAnimationFrame(teamParallaxFrame);
-      teamParallaxFrame = 0;
-      teamPointer.currentX = 0;
-      teamPointer.currentY = 0;
-      teamPointer.targetX = 0;
-      teamPointer.targetY = 0;
-      teamImages.forEach((image) => {
-        image.style.transform = '';
-      });
-    }
 
     if (columns !== teamGridColumns || rows !== teamGridRows) {
       teamGridColumns = columns;
@@ -2249,8 +2342,27 @@ if (pixelsSection && pixelsCanvas) {
 // ---------------------------------------------------------------------------
 let lenis = null;
 let lenisFrame = 0;
+let desktopScrollIdleTimer = 0;
 const HERO_PARALLAX_STRENGTH = 0.3;
 let lastHeroParallaxOffset = Number.NaN;
+
+const finishDesktopScrollEffects = () => {
+  clearTimeout(desktopScrollIdleTimer);
+  desktopScrollIdleTimer = 0;
+  desktopScrollActive = false;
+  document.body.classList.remove('is-scrolling');
+  startHeroRender();
+};
+
+const markDesktopScrolling = () => {
+  if (mqMobile.matches) return;
+  desktopScrollActive = true;
+  document.body.classList.add('is-scrolling');
+  cancelAnimationFrame(heroRenderFrame);
+  heroRenderFrame = 0;
+  clearTimeout(desktopScrollIdleTimer);
+  desktopScrollIdleTimer = window.setTimeout(finishDesktopScrollEffects, 120);
+};
 
 const runLenisFrame = (time) => {
   if (!lenis) {
@@ -2291,7 +2403,10 @@ const setScrollMode = () => {
       syncTouch: false,
       autoResize: false,
     });
-    lenis.on('scroll', ({ scroll }) => updateHeroParallax(scroll));
+    lenis.on('scroll', ({ scroll }) => {
+      markDesktopScrolling();
+      updateHeroParallax(scroll);
+    });
     startLenisFrame();
   } else if (!useLenis) {
     if (lenis) {
@@ -2299,6 +2414,7 @@ const setScrollMode = () => {
       lenis.destroy();
       lenis = null;
     }
+    finishDesktopScrollEffects();
   }
 
   if (document.body.classList.contains('form-open')) {
@@ -2354,6 +2470,98 @@ document.querySelectorAll('a[href^="#"]:not([href="#"])').forEach((link) => {
     scrollToPageHash(link.getAttribute('href'));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mobile navigation: the same top-down mask language as the form modal.
+// ---------------------------------------------------------------------------
+const mobileMenuModal = document.querySelector('.mobile-menu-modal');
+const mobileMenuToggle = document.querySelector('.site-header .nav-toggle');
+
+if (mobileMenuModal && mobileMenuToggle) {
+  const mobileMenuClose = mobileMenuModal.querySelector('.mobile-menu-modal__close');
+  const mobileMenuLinks = Array.from(mobileMenuModal.querySelectorAll(
+    '.mobile-menu-modal__top .brand, .mobile-menu-modal__links a',
+  ));
+  const MOBILE_MENU_TRANSITION_MS = prefersReducedMotion ? 0 : 780;
+  let mobileMenuTimer = 0;
+  let mobileMenuOpen = false;
+
+  mobileMenuModal.inert = true;
+
+  const finishMobileMenuClose = (restoreFocus) => {
+    mobileMenuModal.classList.remove('is-mounted');
+    mobileMenuModal.setAttribute('aria-hidden', 'true');
+    mobileMenuModal.inert = true;
+    if (restoreFocus) mobileMenuToggle.focus({ preventScroll: true });
+  };
+
+  const closeMobileMenu = ({ immediate = false, restoreFocus = true } = {}) => {
+    if (!mobileMenuOpen && !mobileMenuModal.classList.contains('is-mounted')) return;
+    clearTimeout(mobileMenuTimer);
+    mobileMenuOpen = false;
+    mobileMenuModal.classList.remove('is-open');
+    document.body.classList.remove('mobile-menu-open');
+
+    if (immediate || MOBILE_MENU_TRANSITION_MS === 0) {
+      finishMobileMenuClose(restoreFocus);
+    } else {
+      mobileMenuTimer = window.setTimeout(
+        () => finishMobileMenuClose(restoreFocus),
+        MOBILE_MENU_TRANSITION_MS,
+      );
+    }
+  };
+
+  const openMobileMenu = () => {
+    if (!mqMobile.matches || mobileMenuOpen) return;
+    clearTimeout(mobileMenuTimer);
+    mobileMenuOpen = true;
+    mobileMenuModal.inert = false;
+    mobileMenuModal.setAttribute('aria-hidden', 'false');
+    mobileMenuModal.classList.add('is-mounted');
+    document.body.classList.add('mobile-menu-open');
+    requestAnimationFrame(() => {
+      mobileMenuModal.classList.add('is-open');
+      mobileMenuClose?.focus({ preventScroll: true });
+    });
+  };
+
+  mobileMenuToggle.addEventListener('click', openMobileMenu);
+  mobileMenuClose?.addEventListener('click', () => closeMobileMenu());
+
+  mobileMenuLinks.forEach((link) => {
+    link.addEventListener('click', () => {
+      const opensForm = link.hasAttribute('data-open-form');
+      closeMobileMenu({ immediate: opensForm, restoreFocus: false });
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (!mobileMenuOpen) return;
+    if (event.key === 'Escape') {
+      closeMobileMenu();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = Array.from(mobileMenuModal.querySelectorAll('a[href], button:not([disabled])'))
+      .filter((element) => element.getClientRects().length > 0);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
+  mqMobile.addEventListener('change', (event) => {
+    if (!event.matches) closeMobileMenu({ immediate: true, restoreFocus: false });
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Project request modal: solid top-down mask, focus management and floats.

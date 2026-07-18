@@ -150,13 +150,21 @@ a.case-back:focus-visible {
 
 .case-title[data-reveal] {
   filter: blur(var(--reveal-blur));
-  transform: translateZ(0);
-  will-change: filter;
   transition: filter var(--reveal-duration) var(--reveal-ease);
+}
+
+.case-title[data-reveal].is-revealing {
+  will-change: filter;
 }
 
 .case-title[data-reveal].is-visible {
   filter: blur(0);
+}
+
+.case-title[data-reveal].is-visible.is-revealed {
+  filter: none;
+  transition: none;
+  will-change: auto;
 }
 
 .case-description {
@@ -452,6 +460,16 @@ a.case-offer__button {
 
   .case-meta {
     margin-top: 2.5rem;
+    max-width: none;
+  }
+
+  .case-meta > div {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.75rem;
+  }
+
+  .case-start {
+    width: 100%;
   }
 
   .case-visual {
@@ -461,11 +479,24 @@ a.case-offer__button {
 
   .case-offer {
     width: 700px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 15px;
+  }
+
+  .case-offer__copy {
+    max-width: none;
+    padding-right: 32px;
+  }
+
+  .case-offer__controls {
+    position: static;
+    width: 100%;
   }
 
   .case-offer__actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 
   .case-offer__button {
@@ -503,5 +534,11 @@ a.case-offer__button {
   .case-offer__close:focus-visible {
     opacity: 0.6;
     transform: none;
+  }
+
+  .case-offer__close {
+    position: absolute;
+    top: 15px;
+    right: 15px;
   }
 }
