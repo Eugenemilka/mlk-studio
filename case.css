@@ -290,7 +290,7 @@ a.case-back:focus-visible {
 
 .case-offer {
   position: fixed;
-  left: 50%;
+  left: 15px;
   bottom: 15px;
   z-index: 9998;
   display: grid;
@@ -301,14 +301,14 @@ a.case-back:focus-visible {
   max-width: calc(100% - 30px);
   padding: 15px;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(11, 11, 11, 0.78);
+  background: rgba(255, 255, 255, 0.1);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.38);
   -webkit-backdrop-filter: blur(32px);
   backdrop-filter: blur(32px);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translate3d(-50%, calc(100% + 30px), 0);
+  transform: translate3d(0, calc(100% + 30px), 0);
   transition:
     transform 0.65s var(--ease),
     opacity 0.45s var(--ease),
@@ -319,7 +319,7 @@ a.case-back:focus-visible {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transform: translate3d(-50%, 0, 0);
+  transform: translate3d(0, 0, 0);
   transition-delay: 0s;
 }
 
