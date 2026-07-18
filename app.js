@@ -1923,6 +1923,48 @@ if (worksSection && workCards.length) {
   }
 }
 
+const createPageTransition = () => {
+  const transition = document.createElement('div');
+  transition.className = 'page-transition';
+  transition.setAttribute('aria-hidden', 'true');
+  const fragment = document.createDocumentFragment();
+  for (let index = 0; index < 8; index += 1) {
+    const step = document.createElement('span');
+    step.className = 'page-transition__step';
+    step.style.setProperty('--i', String(index));
+    fragment.appendChild(step);
+  }
+  transition.appendChild(fragment);
+  document.body.appendChild(transition);
+  return transition;
+};
+
+document.querySelectorAll('[data-case-link]').forEach((link) => {
+  link.addEventListener('click', (event) => {
+    if (
+      event.defaultPrevented
+      || event.button !== 0
+      || event.metaKey
+      || event.ctrlKey
+      || event.shiftKey
+      || event.altKey
+    ) return;
+
+    event.preventDefault();
+    const destination = link.href;
+    if (prefersReducedMotion) {
+      window.location.assign(destination);
+      return;
+    }
+
+    const transition = createPageTransition();
+    document.body.classList.add('is-page-transitioning');
+    transition.getBoundingClientRect();
+    transition.classList.add('is-closing');
+    window.setTimeout(() => window.location.assign(destination), 1160);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // MLK / MLK.STUDIO pixel grid: one responsive Canvas 2D surface. The static grid is
 // redrawn only on resize; rAF runs while hovered or while residual heat fades.

@@ -156,6 +156,57 @@ body::before {
   transform: translateY(-40px);
 }
 
+.page-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.page-transition__step {
+  flex: 1 0 auto;
+  width: calc(100% / 8 + 1px);
+  height: 101%;
+  margin-left: -1px;
+  background: #fff;
+  transform: translateY(102%);
+  transition: transform 0.75s cubic-bezier(0.76, 0, 0.24, 1);
+  transition-delay: calc(var(--i) * 0.055s);
+}
+
+.page-transition.is-closing,
+.page-transition.is-covered,
+.page-transition.is-opening {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.page-transition.is-closing .page-transition__step,
+.page-transition.is-covered .page-transition__step {
+  transform: translateY(0);
+}
+
+.page-transition.is-covered .page-transition__step {
+  transition: none;
+}
+
+.page-transition.is-opening .page-transition__step {
+  transform: translateY(-102%);
+}
+
+body.is-page-transitioning {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition__step {
+    transition: none;
+  }
+}
+
 #hero-canvas {
   position: absolute;
   inset: 0;
@@ -331,6 +382,7 @@ body.cursor-hide .cursor-ellipse {
 .nav-menu {
   display: flex;
   flex-wrap: nowrap;
+  align-items: center;
   justify-content: flex-start;
   column-gap: 2rem;
   row-gap: 1rem;
@@ -343,6 +395,7 @@ body.cursor-hide .cursor-ellipse {
   text-decoration: none;
   color: var(--text);
   font-size: 0.78rem;
+  line-height: 1;
   letter-spacing: 0.16em;
   text-transform: none;
   opacity: 0.95;
@@ -354,8 +407,18 @@ body.cursor-hide .cursor-ellipse {
 }
 
 .nav-menu .book {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
   text-decoration: none;
-  margin-left: 0;
+  margin: -5px;
+  line-height: 1;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.nav-menu .book:focus-visible {
+  outline: none;
 }
 
 .language-switcher {
@@ -1268,6 +1331,13 @@ h1 {
   transition: opacity 0.7s var(--ease), transform 0.7s var(--ease);
 }
 
+.work-card__link {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+}
+
 .work-card:nth-child(2) {
   transition-delay: 0.09s;
 }
@@ -1819,6 +1889,7 @@ h1 {
   padding: 5px;
   margin: -5px;
   font-size: 0.78rem;
+  line-height: 1;
   letter-spacing: 0.16em;
   white-space: nowrap;
   visibility: hidden;
@@ -2023,7 +2094,7 @@ body.form-open {
   filter: blur(0);
 }
 
-a:not([data-fade]):not(.contact-cta__button),
+a:not([data-fade]):not(.contact-cta__button):not(.work-card__link),
 a[data-fade].is-in {
   opacity: 0.6;
 }
