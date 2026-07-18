@@ -364,6 +364,14 @@ const caseReady = new Promise((resolve) => {
   resolveCaseReady = resolve;
 });
 
+const caseCopy = document.querySelector('.case-info__copy');
+if (caseCopy) {
+  caseCopy.classList.add('has-sequence');
+  caseReady.then(() => {
+    requestAnimationFrame(() => caseCopy.classList.add('is-sequence-visible'));
+  });
+}
+
 const waitForImage = (image) => new Promise((resolve) => {
   if (!image) {
     resolve();

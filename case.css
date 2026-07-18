@@ -127,6 +127,47 @@ a.case-back:focus-visible {
   margin-top: 30px;
 }
 
+.case-info__copy.has-sequence > .case-kicker {
+  --case-copy-delay: 0s;
+}
+
+.case-info__copy.has-sequence > .case-title {
+  --case-copy-delay: 0.2s;
+}
+
+.case-info__copy.has-sequence > .case-description {
+  --case-copy-delay: 0.4s;
+}
+
+.case-info__copy.has-sequence > .case-meta {
+  --case-copy-delay: 0.6s;
+}
+
+.case-info__copy.has-sequence > .case-start {
+  --case-copy-delay: 0.8s;
+}
+
+.case-info__copy.has-sequence > :is(.case-kicker, .case-title, .case-description, .case-meta, .case-start) {
+  opacity: 0;
+}
+
+.case-info__copy.has-sequence.is-sequence-visible > :is(.case-kicker, .case-title, .case-description, .case-meta, .case-start) {
+  animation: case-copy-block-in 0.7s var(--ease) both;
+  animation-delay: var(--case-copy-delay);
+}
+
+@keyframes case-copy-block-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 .case-kicker {
   margin: 0 0 1.2rem;
   color: var(--text-soft);
@@ -406,6 +447,13 @@ a.case-offer__button {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .case-info__copy.has-sequence > :is(.case-kicker, .case-title, .case-description, .case-meta, .case-start),
+  .case-info__copy.has-sequence.is-sequence-visible > :is(.case-kicker, .case-title, .case-description, .case-meta, .case-start) {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+
   .case-title[data-reveal] {
     filter: none;
     transition: none;
